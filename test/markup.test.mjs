@@ -4,11 +4,14 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+const favicon = readFileSync(new URL('../favicon.svg', import.meta.url), 'utf8');
 
 test('workshop has semantic landmarks and accessible canvas descriptions', () => {
   assert.match(html, /<header\b/);
   assert.match(html, /<main\b/);
   assert.match(html, /<footer\b/);
+  assert.match(html, /rel="icon" type="image\/svg\+xml" href="favicon\.svg"/);
+  assert.match(favicon, /<svg\b[\s\S]*<\/svg>/);
   assert.match(html, /id="bridge-canvas"[^>]*role="img"[^>]*aria-label=/);
   assert.match(html, /id="history-canvas"[^>]*role="img"[^>]*aria-label=/);
   assert.match(html, /id="test-status"[^>]*role="status"/);

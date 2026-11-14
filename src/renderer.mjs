@@ -183,8 +183,8 @@ export function drawBridge(canvas, topology, genome, frame = {}, options = {}) {
   ctx.setLineDash([]);
   ctx.fillStyle = 'rgba(237, 240, 231, .52)';
   ctx.font = '10px ui-monospace, monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText(`${topology.span} TOOTHPICK SPAN`, (leftSupport.x + rightSupport.x) / 2, Math.min(height - 7, layout.deckY + 67));
+  ctx.textAlign = 'right';
+  ctx.fillText(`${topology.span} TOOTHPICK SPAN`, width - 14, 20);
 
   const loadPoint = layout.points[topology.loadNode];
   drawLoad(ctx, loadPoint, frame.currentLoadKg ?? 0, frame.collapsed, layout.scale, height);
