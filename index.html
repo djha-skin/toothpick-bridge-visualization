@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101416">
+    <meta name="description" content="Watch a genetic algorithm evolve toothpick truss bridges under an increasing load.">
+    <title>Bridge Lab — Toothpick Evolution</title>
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="src/main.mjs"></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="Bridge Lab home">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span>BRIDGE<span class="brand-accent">LAB</span></span>
+      </a>
+      <p class="header-note">A tiny workshop for big structural ideas</p>
+      <a class="about-link" href="#about">How it works <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main class="page-shell">
+      <section class="intro-row" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">GENETIC BRIDGE EXPERIMENT</p>
+          <h1 id="page-title">Can your bridge take the weight?</h1>
+          <p class="intro-copy">Each generation builds a new batch of toothpick trusses. The load climbs until the members give way.</p>
+        </div>
+        <div class="generation-badge" aria-label="Current generation">
+          <span class="metric-label">GENERATION</span>
+          <strong id="generation-value">01</strong>
+        </div>
+      </section>
+
+      <section class="summary-grid" aria-label="Evolution summary">
+        <article class="summary-card summary-card--highlight">
+          <span class="metric-label">BEST LOAD HELD</span>
+          <strong><span id="best-load">—</span><small>kg</small></strong>
+          <span class="metric-foot" id="best-load-caption">Waiting for first test</span>
+        </article>
+        <article class="summary-card">
+          <span class="metric-label">GENERATION AVERAGE</span>
+          <strong><span id="average-load">—</span><small>kg</small></strong>
+          <span class="metric-foot">Across tested bridges</span>
+        </article>
+        <article class="summary-card">
+          <span class="metric-label">BRIDGES TESTED</span>
+          <strong><span id="tested-count">0</span><small id="population-count">/ 24</small></strong>
+          <span class="metric-foot" id="run-state">Ready to experiment</span>
+        </article>
+      </section>
+
+      <div class="workbench-grid">
+        <section class="panel stage-panel" aria-labelledby="stage-heading">
+          <div class="panel-heading stage-heading">
+            <div>
+              <p class="eyebrow">LIVE LOAD TEST</p>
+              <h2 id="stage-heading">Bridge <span id="candidate-number">01</span></h2>
+            </div>
+            <div class="load-readout" aria-label="Current applied load">
+              <span class="metric-label">APPLIED LOAD</span>
+              <strong><span id="load-value">0.0</span><small>kg</small></strong>
+            </div>
+          </div>
+
+          <div class="canvas-frame">
+            <canvas id="bridge-canvas" width="1000" height="520" role="img" aria-label="Side view of the bridge under a hanging load">
+              Bridge loading visualization. The bridge is supported at both ends, with a weight hanging at its center.
+            </canvas>
+            <div class="canvas-legend" aria-label="Member force legend">
+              <span><i class="legend-dot legend-dot--tension"></i>Tension</span>
+              <span><i class="legend-dot legend-dot--compression"></i>Compression</span>
+              <span><i class="legend-dot legend-dot--broken"></i>Failed</span>
+            </div>
+          </div>
+          <p class="stage-caption" id="bridge-description">A fixed-span truss will appear here. Select a bridge below to inspect its structure.</p>
+          <div class="load-progress" aria-hidden="true"><span id="load-progress-fill"></span></div>
+          <div class="stage-footer">
+            <span id="test-status" role="status">Ready for the first load test</span>
+            <button class="text-button" id="replay-test" type="button" disabled>Replay test</button>
+            <span><span id="stick-count">0</span> toothpicks</span>
+          </div>
+        </section>
+
+        <aside class="side-column">
+          <section class="panel controls-panel" aria-labelledby="controls-heading">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">EXPERIMENT CONTROLS</p>
+                <h2 id="controls-heading">Evolution</h2>
+              </div>
+              <span class="status-light" id="status-light" aria-hidden="true"></span>
+            </div>
+            <div class="button-row">
+              <button class="button button--primary" id="run-toggle" type="button">
+                <span aria-hidden="true">▶</span> Start evolving
+              </button>
+              <button class="button button--quiet" id="step-button" type="button" aria-label="Test the next bridge">Step</button>
+            </div>
+            <button class="button button--wide button--quiet" id="fast-forward" type="button">Fast-forward generation</button>
+
+            <label class="control-label" for="speed-control"><span>Test speed</span><output id="speed-value" for="speed-control">2×</output></label>
+            <input id="speed-control" type="range" min="1" max="5" value="2" step="1">
+
+            <label class="control-label" for="mutation-control"><span>Mutation rate</span><output id="mutation-value" for="mutation-control">8%</output></label>
+            <input id="mutation-control" type="range" min="1" max="30" value="8" step="1">
+
+            <div class="seed-controls">
+              <label class="control-label" for="seed-input"><span>Experiment seed</span></label>
+              <div class="seed-row">
+                <input id="seed-input" type="text" value="toothpick-01" maxlength="48" autocomplete="off" spellcheck="false">
+                <button class="button button--quiet" id="new-run" type="button">New run</button>
+              </div>
+              <p class="hint">Reuse a seed to replay the same evolution.</p>
+            </div>
+            <div class="button-row save-row">
+              <button class="text-button" id="save-run" type="button">Save run</button>
+              <button class="text-button" id="restore-run" type="button" disabled>Restore saved</button>
+              <button class="text-button" id="delete-saved-run" type="button" disabled>Delete saved</button>
+            </div>
+          </section>
+
+          <section class="panel history-panel" aria-labelledby="history-heading">
+            <div class="panel-heading compact-heading">
+              <div>
+                <p class="eyebrow">PROGRESS OVER TIME</p>
+                <h2 id="history-heading">Load held</h2>
+              </div>
+              <span class="chart-key"><i></i>Best <i class="chart-key-average"></i>Average</span>
+            </div>
+            <div class="chart-frame">
+              <canvas id="history-canvas" width="680" height="250" role="img" aria-label="Chart showing best and average bridge loads by generation">
+                Load history chart will appear after a generation is tested.
+              </canvas>
+            </div>
+            <p id="history-description" class="hint">Best and average loads will be charted here.</p>
+          </section>
+        </aside>
+      </div>
+
+      <section class="panel population-panel" aria-labelledby="population-heading">
+        <div class="panel-heading population-heading">
+          <div>
+            <p class="eyebrow">CURRENT GENERATION</p>
+            <h2 id="population-heading">The bridge lineup</h2>
+          </div>
+          <span class="population-note" id="population-note">Select a bridge to inspect it</span>
+        </div>
+        <div class="population-content">
+          <div class="population-grid" id="population-grid" aria-label="Bridge candidates in the current generation">
+            <p class="empty-population">Start the experiment to see the first bridge designs.</p>
+          </div>
+          <aside class="leaderboard-panel" aria-labelledby="leaderboard-heading">
+            <p class="eyebrow" id="leaderboard-heading">TOP BRIDGES</p>
+            <ol class="leaderboard" id="leaderboard">
+              <li class="leaderboard-empty">Scores appear after testing.</li>
+            </ol>
+          </aside>
+        </div>
+      </section>
+
+      <details class="panel about-panel" id="about">
+        <summary>How this experiment works</summary>
+        <div class="about-copy">
+          <p>Bridges are modeled as simple 2D trusses. The solver estimates forces in each toothpick as a center load increases, breaks overloaded members, and recalculates how the remaining structure carries the load. Stronger designs are selected to produce the next generation.</p>
+          <p>This is an educational visualization, not an engineering tool. The displayed kg-equivalent loads use illustrative strength assumptions, not measured toothpick data. Real toothpicks, joints, glue, materials, and three-dimensional bracing behave differently from this simplified model; never use these results to design or certify a real structure.</p>
+        </div>
+      </details>
+    </main>
+
+    <footer class="site-footer">Built for curious builders <span aria-hidden="true">·</span> No real bridges harmed</footer>
+  </body>
+</html>
