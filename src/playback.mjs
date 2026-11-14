@@ -15,6 +15,11 @@ export function sampleLoadTest(result, progress, options = {}) {
     forceN: force.forceN * forceScale,
   }));
   const brokenMemberIds = new Set(completedEvents.flatMap(event => event.brokenMemberIds));
+  const memberFailures = completedEvents.flatMap(event => event.memberFailures ?? []);
+  const failedJointNodes = new Set(memberFailures
+    .filter(failure => failure.cause === 'glue' && Number.isInteger(failure.endpointNode))
+    .map(failure => failure.endpointNode));
+  const failureCauseByMember = new Map(memberFailures.map(failure => [failure.memberId, failure.cause]));
   const isComplete = boundedProgress >= 1;
 
   return {
@@ -25,6 +30,8 @@ export function sampleLoadTest(result, progress, options = {}) {
     maxStableLoadKg: result.maxStableLoadKg,
     memberForces,
     brokenMemberIds,
+    failedJointNodes,
+    failureCauseByMember,
     eventIndex: completedEvents.length,
     isComplete,
     collapsed: Boolean(result.collapsed && isComplete),

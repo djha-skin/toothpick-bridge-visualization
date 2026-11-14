@@ -6,6 +6,7 @@ import {
 } from './genetics.mjs';
 import { loadTestDurationMs, sampleLoadTest } from './playback.mjs';
 import { drawBridge } from './renderer.mjs';
+import { DEFAULT_MATERIAL } from './truss.mjs';
 import { updateGenerationHistory, updateSummary, renderPopulation } from './ui.mjs';
 import { deleteSavedRun, hasSavedRun, loadRun, saveRun } from './persistence.mjs';
 
@@ -20,6 +21,7 @@ const leaderboard = document.querySelector('#leaderboard');
 const seedInput = document.querySelector('#seed-input');
 const speedControl = document.querySelector('#speed-control');
 const mutationControl = document.querySelector('#mutation-control');
+const glueControl = document.querySelector('#glue-control');
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
 let state;
@@ -28,6 +30,12 @@ let generationTimer = null;
 let evaluationWorker = null;
 let nextEvaluationId = 1;
 const pendingEvaluations = new Map();
+
+function updateGlueReadout() {
+  const ratio = Number(glueControl.value) / 100;
+  const capacityN = Math.round(DEFAULT_MATERIAL.tensileStrengthN * ratio);
+  document.querySelector('#glue-value').textContent = `${glueControl.value}% of wood tension (~${capacityN} N)`;
+}
 
 function placeholderEvaluations(population) {
   return population.map((genome, index) => ({
@@ -40,7 +48,7 @@ function placeholderEvaluations(population) {
       maxStableLoadKg: 0,
       failureLoadN: 0,
       events: [],
-      stickCount: decodeGenome(genome, topology).length,
+      stickCount: decodeGenome(genome, topology).members.length,
     },
   }));
 }
@@ -94,9 +102,12 @@ function createEvaluationWorker() {
 }
 
 function evaluatePopulationOffThread(population) {
+  const material = { glueStrengthRatio: Number(glueControl.value) / 100 };
   const worker = createEvaluationWorker();
   if (!worker) {
-    return new Promise(resolve => setTimeout(() => resolve(evaluatePopulation(population, topology)), 0));
+    return new Promise(resolve => setTimeout(() => resolve(
+      evaluatePopulation(population, topology, undefined, { material }),
+    ), 0));
   }
   const id = nextEvaluationId++;
   return new Promise((resolve, reject) => {
@@ -104,9 +115,12 @@ function evaluatePopulationOffThread(population) {
     worker.postMessage({
       id,
       population: population.map(genome => Array.from(genome)),
-      topology: { span: topology.span, rows: topology.rows, maxSticks: topology.maxSticks },
+      topology: { span: topology.span, bays: topology.bays, maxSticks: topology.maxSticks },
+      material,
     });
-  }).catch(() => new Promise(resolve => setTimeout(() => resolve(evaluatePopulation(population, topology)), 0)));
+  }).catch(() => new Promise(resolve => setTimeout(() => resolve(
+    evaluatePopulation(population, topology, undefined, { material }),
+  ), 0)));
 }
 
 async function prepareGeneration(targetState, phaseAfter = 'ready', autoRun = false) {
@@ -171,6 +185,13 @@ function visibleFrame(evaluation) {
   return sampleLoadTest(evaluation.result, progress);
 }
 
+function firstFailureDescription(result) {
+  const failure = result.events?.flatMap(event => event.memberFailures ?? [])[0];
+  if (!failure) return 'static stability';
+  if (failure.cause === 'glue') return `glue joint at ${failure.endpointId}`;
+  return `wood member ${failure.memberId}`;
+}
+
 function phaseText() {
   if (state.phase === 'preparing') return 'Calculating bridge strength';
   if (state.phase === 'running') return `Testing bridge ${state.activeIndex + 1} of ${state.population.length}`;
@@ -192,7 +213,7 @@ function renderStage() {
 
   const isTested = state.selectedIndex < state.testedCount;
   let description = `Bridge ${state.selectedIndex + 1} has ${evaluation.result.stickCount} toothpicks.`;
-  if (isTested) description += ` It held ${evaluation.result.maxStableLoadKg.toFixed(1)} kg-equivalent before failure.`;
+  if (isTested) description += ` It held ${evaluation.result.maxStableLoadKg.toFixed(1)} kg-equivalent before ${firstFailureDescription(evaluation.result)} failed.`;
   else if (state.phase === 'running' && state.selectedIndex === state.activeIndex) description += ' Its center load is rising.';
   else description += ' Its load test is queued.';
   document.querySelector('#bridge-description').textContent = description;
@@ -201,7 +222,7 @@ function renderStage() {
   if (state.phase === 'preparing') status = 'Calculating structural responses…';
   else if (state.phase === 'running') status = `Loading bridge ${state.activeIndex + 1} · ${state.testedCount + 1}/${state.population.length}`;
   else if (state.phase === 'replay') status = `Replaying recorded failure · ${Math.round(frame.progress * 100)}%`;
-  else if (isTested) status = `Failed at ${evaluation.result.maxStableLoadKg.toFixed(1)} kg-equivalent`;
+  else if (isTested) status = `Failed at ${evaluation.result.maxStableLoadKg.toFixed(1)} kg-equivalent · ${firstFailureDescription(evaluation.result)}`;
   else if (state.phase === 'generation-complete') status = 'Generation tested · ready to evolve';
   else if (state.phase === 'paused') status = 'Paused · choose a bridge or resume';
   document.querySelector('#test-status').textContent = status;
@@ -458,6 +479,7 @@ function saveCurrentRun() {
     saveRun(window.localStorage, state, {
       speed: Number(speedControl.value),
       mutationPercent: Number(mutationControl.value),
+      glueStrengthPercent: Number(glueControl.value),
     }, topology);
     updateRestoreAvailability();
     document.querySelector('#test-status').textContent = 'Run saved in this browser';
@@ -472,8 +494,10 @@ async function restoreSavedRun() {
     cancelPendingWork();
     speedControl.value = String(restored.settings.speed);
     mutationControl.value = String(restored.settings.mutationPercent);
+    glueControl.value = String(restored.settings.glueStrengthPercent);
     document.querySelector('#speed-value').textContent = `${speedControl.value}×`;
     document.querySelector('#mutation-value').textContent = `${mutationControl.value}%`;
+    updateGlueReadout();
     seedInput.value = restored.seed;
     const restoredPhase = restored.phase;
     state = {
@@ -558,6 +582,8 @@ function bindControls() {
   mutationControl.addEventListener('input', () => {
     document.querySelector('#mutation-value').textContent = `${mutationControl.value}%`;
   });
+  glueControl.addEventListener('input', updateGlueReadout);
+  glueControl.addEventListener('change', () => startNewRun(seedInput.value));
 }
 
 export function bootApp() {

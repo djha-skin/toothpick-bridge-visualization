@@ -1,8 +1,8 @@
 import { DEFAULT_BRIDGE_CONFIG, validateBridge } from './bridge.mjs';
 
 export const RUN_STORAGE_KEY = 'toothpick-bridge-lab:run:v1';
-export const RUN_SCHEMA_VERSION = 1;
-export const RUN_MODEL_VERSION = 'triangular-truss-v1';
+export const RUN_SCHEMA_VERSION = 2;
+export const RUN_MODEL_VERSION = 'variable-truss-v2';
 
 function integerInRange(value, min, max) {
   return Number.isInteger(value) && value >= min && value <= max;
@@ -14,7 +14,7 @@ export function createRunSnapshot(run, settings = {}, topology) {
     modelVersion: RUN_MODEL_VERSION,
     topology: {
       span: topology.span,
-      rows: topology.rows,
+      bays: topology.bays,
       maxSticks: topology.maxSticks,
     },
     seed: String(run.seed),
@@ -32,6 +32,7 @@ export function createRunSnapshot(run, settings = {}, topology) {
     settings: {
       speed: Number(settings.speed ?? 2),
       mutationPercent: Number(settings.mutationPercent ?? 8),
+      glueStrengthPercent: Number(settings.glueStrengthPercent ?? 44),
     },
   };
 }
@@ -45,7 +46,7 @@ export function validateRunSnapshot(snapshot, topology) {
   }
   const expectedTopology = {
     span: topology.span ?? DEFAULT_BRIDGE_CONFIG.span,
-    rows: topology.rows ?? DEFAULT_BRIDGE_CONFIG.rows,
+    bays: topology.bays ?? DEFAULT_BRIDGE_CONFIG.bays,
     maxSticks: topology.maxSticks ?? DEFAULT_BRIDGE_CONFIG.maxSticks,
   };
   if (!snapshot.topology || Object.keys(expectedTopology).some(key => snapshot.topology[key] !== expectedTopology[key])) {
@@ -62,11 +63,11 @@ export function validateRunSnapshot(snapshot, topology) {
     throw new Error('Saved run has an invalid population.');
   }
   const population = snapshot.population.map((genes, index) => {
-    if (!Array.isArray(genes) || genes.length !== topology.optionalEdges.length
-      || genes.some(gene => gene !== 0 && gene !== 1)) {
+    if (!Array.isArray(genes) || genes.length !== topology.baselineGenome.length
+      || genes.some(gene => !Number.isInteger(gene) || gene < 0 || gene > 0xffff)) {
       throw new Error(`Saved bridge ${index + 1} has an invalid genome.`);
     }
-    const genome = new Uint8Array(genes);
+    const genome = new Uint16Array(genes);
     const validation = validateBridge(genome, topology);
     if (!validation.valid) throw new Error(`Saved bridge ${index + 1} is invalid: ${validation.issues.join(', ')}.`);
     return genome;
@@ -94,7 +95,8 @@ export function validateRunSnapshot(snapshot, topology) {
   });
   const settings = snapshot.settings;
   if (!settings || !integerInRange(settings.speed, 1, 5)
-    || !integerInRange(settings.mutationPercent, 1, 30)) {
+    || !integerInRange(settings.mutationPercent, 1, 30)
+    || !integerInRange(settings.glueStrengthPercent, 44, 144)) {
     throw new Error('Saved run has invalid evolution settings.');
   }
   const activeIndex = snapshot.testedCount < population.length ? snapshot.testedCount : -1;
@@ -107,7 +109,11 @@ export function validateRunSnapshot(snapshot, topology) {
     selectedIndex: snapshot.selectedIndex,
     progress: activeIndex < 0 ? 1 : snapshot.progress,
     history,
-    settings: { speed: settings.speed, mutationPercent: settings.mutationPercent },
+    settings: {
+      speed: settings.speed,
+      mutationPercent: settings.mutationPercent,
+      glueStrengthPercent: settings.glueStrengthPercent,
+    },
     phase: activeIndex < 0 ? 'generation-complete'
       : snapshot.testedCount > 0 || snapshot.progress > 0 ? 'paused' : 'ready',
   };

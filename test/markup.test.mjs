@@ -18,7 +18,7 @@ test('workshop has semantic landmarks and accessible canvas descriptions', () =>
 });
 
 test('inputs have labels and buttons have visible or programmatic names', () => {
-  for (const id of ['speed-control', 'mutation-control', 'seed-input']) {
+  for (const id of ['speed-control', 'mutation-control', 'glue-control', 'seed-input']) {
     assert.match(html, new RegExp(`<label[^>]+for="${id}"`));
   }
   const buttons = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];

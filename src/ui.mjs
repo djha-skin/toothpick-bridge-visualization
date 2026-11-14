@@ -7,15 +7,15 @@ function formatLoad(value) {
 }
 
 function miniatureSvg(genome, topology) {
-  const maxY = Math.max(1, ...topology.nodes.map(node => node.y));
+  const geometry = decodeGenome(genome, topology);
+  const maxY = Math.max(0.1, ...geometry.nodes.map(node => node.y));
   const point = node => ({
     x: 5 + node.x / topology.span * 90,
     y: 32 - node.y / maxY * 20,
   });
-  const members = decodeGenome(genome, topology);
-  const lines = members.map(member => {
-    const a = point(topology.nodes[member.a]);
-    const b = point(topology.nodes[member.b]);
+  const lines = geometry.members.map(member => {
+    const a = point(geometry.nodes[member.a]);
+    const b = point(geometry.nodes[member.b]);
     const color = member.band === 2 ? '#b9c58f' : '#dca969';
     return `<line x1="${a.x.toFixed(2)}" y1="${a.y.toFixed(2)}" x2="${b.x.toFixed(2)}" y2="${b.y.toFixed(2)}" stroke="${color}" stroke-width="1.4" stroke-linecap="round"/>`;
   }).join('');
@@ -33,8 +33,8 @@ function makeCandidateCard(evaluation, topology, index, { selectedIndex, activeI
   button.className = `candidate-card${isSelected ? ' is-selected' : ''}${eliteIndices.has(index) ? ' is-elite' : ''}${tested && evaluation.result.collapsed ? ' is-failed' : ''}${isActive ? ' is-testing' : ''}`;
   button.dataset.selectIndex = String(index);
   button.setAttribute('aria-pressed', String(isSelected));
-  button.setAttribute('aria-label', `Bridge ${index + 1}, ${status}, ${score}. Select bridge.`);
-  button.innerHTML = `${miniatureSvg(evaluation.genome, topology)}<span class="candidate-meta"><span>BR ${String(index + 1).padStart(2, '0')}</span><span>${evaluation.result.stickCount} sticks</span></span><span class="candidate-score">${score}</span>`;
+  button.setAttribute('aria-label', `Bridge ${index + 1}, ${evaluation.result.stickCount} of ${topology.maxSticks} toothpicks, ${status}, ${score}. Select bridge.`);
+  button.innerHTML = `${miniatureSvg(evaluation.genome, topology)}<span class="candidate-meta"><span>BR ${String(index + 1).padStart(2, '0')}</span><span>${evaluation.result.stickCount} / ${topology.maxSticks} sticks</span></span><span class="candidate-score">${score}</span>`;
   return button;
 }
 

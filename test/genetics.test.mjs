@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createInitialPopulation, createTopology, genomeKey, validateBridge } from '../src/bridge.mjs';
+import { createInitialPopulation, createTopology, decodeGenome, genomeKey, validateBridge } from '../src/bridge.mjs';
 import {
   createNextGeneration,
   evaluatePopulation,
@@ -36,6 +36,11 @@ test('generation transitions preserve elites, size, validity, budget, and seed r
   assert.deepEqual(first[0], ranked[0].genome);
   assert.deepEqual(first[1], ranked[1].genome);
   assert.ok(new Set(first.map(genomeKey)).size >= 2);
+  const apexLayouts = new Set(first.map(genome => decodeGenome(genome, topology).nodes
+    .slice(topology.bays + 1)
+    .map(node => `${node.x.toFixed(3)},${node.y.toFixed(3)}`)
+    .join(';')));
+  assert.ok(apexLayouts.size > 2, 'next generation should evolve distinct triangle shapes');
   for (const genome of first) {
     assert.equal(validateBridge(genome, topology).valid, true);
     assert.ok(validateBridge(genome, topology).stickCount <= topology.maxSticks);

@@ -1,4 +1,4 @@
-import { cloneGenome, createInitialPopulation, decodeGenome, genomeKey } from './bridge.mjs';
+import { cloneGenome, createInitialPopulation, decodeGenome, genomeKey, validateBridge } from './bridge.mjs';
 import { createRandom, randomInt, shuffle } from './random.mjs';
 import { evaluateBridge } from './truss.mjs';
 
@@ -8,6 +8,8 @@ export const DEFAULT_GA_CONFIG = Object.freeze({
   tournamentSize: 3,
   mutationRate: 0.08,
 });
+
+const GENE_MAX = 0xffff;
 
 function loadFitness(result) {
   const value = result?.maxStableLoadN ?? 0;
@@ -28,11 +30,11 @@ export function compareEvaluations(left, right) {
   return genomeKey(left.genome).localeCompare(genomeKey(right.genome));
 }
 
-export function evaluatePopulation(population, topology, evaluate = evaluateBridge) {
+export function evaluatePopulation(population, topology, evaluate = evaluateBridge, options = {}) {
   return population.map((genome, index) => ({
     index,
     genome: cloneGenome(genome),
-    result: evaluate(genome, topology),
+    result: evaluate(genome, topology, options),
   }));
 }
 
@@ -45,42 +47,21 @@ export function createFirstGeneration(seed, topology, config = {}) {
   return createInitialPopulation(populationSize, seed, topology);
 }
 
-export function normalizeGenome(genome, topology, random = createRandom('normalize')) {
-  const expectedLength = topology.optionalEdges.length;
-  if (genome.length !== expectedLength) {
-    throw new RangeError(`Expected ${expectedLength} genes, received ${genome.length}`);
+export function normalizeGenome(genome, topology) {
+  if (!(genome instanceof Uint16Array) && !Array.isArray(genome)) {
+    throw new TypeError('Genome must be a Uint16Array or an array of integer genes');
   }
-  const selected = Uint8Array.from(genome, gene => gene ? 1 : 0);
-  const activeColumns = new Set();
-  for (const roofNode of topology.roofNodes) {
-    const roofGenes = [...roofNode.diagonalEdges, ...roofNode.horizontalEdges];
-    if (roofGenes.some(index => selected[index])) activeColumns.add(roofNode.column);
+  if (genome.length !== topology.baselineGenome.length) {
+    throw new RangeError(`Expected ${topology.baselineGenome.length} genes, received ${genome.length}`);
   }
-
-  const buildValidGenome = () => {
-    const normalized = new Uint8Array(expectedLength);
-    for (let index = 0; index < topology.baselineGenome.length; index += 1) {
-      if (topology.baselineGenome[index]) normalized[index] = 1;
+  for (const gene of genome) {
+    if (!Number.isInteger(gene) || gene < 0 || gene > GENE_MAX) {
+      throw new RangeError('Genome genes must be integers between 0 and 65535');
     }
-    for (const roofNode of topology.roofNodes) {
-      if (!activeColumns.has(roofNode.column)) continue;
-      for (const edgeIndex of roofNode.diagonalEdges) normalized[edgeIndex] = 1;
-      for (const edgeIndex of roofNode.horizontalEdges) {
-        const edge = topology.optionalEdges[edgeIndex];
-        const otherNode = edge.a === roofNode.node ? edge.b : edge.a;
-        const otherColumn = topology.nodes[otherNode].i;
-        if (selected[edgeIndex] && activeColumns.has(otherColumn)) normalized[edgeIndex] = 1;
-      }
-    }
-    return normalized;
-  };
-
-  let normalized = buildValidGenome();
-  while (decodeGenome(normalized, topology).length > topology.maxSticks && activeColumns.size) {
-    const [columnToRemove] = shuffle([...activeColumns], random);
-    activeColumns.delete(columnToRemove);
-    normalized = buildValidGenome();
   }
+  const normalized = cloneGenome(genome);
+  const validation = validateBridge(normalized, topology);
+  if (!validation.valid) throw new RangeError(`Invalid bridge geometry: ${validation.issues.join(', ')}`);
   return normalized;
 }
 
@@ -93,7 +74,7 @@ function tournamentWinner(evaluations, random, tournamentSize, excludedIndex = -
 }
 
 function crossover(first, second, random) {
-  const child = new Uint8Array(first.length);
+  const child = new Uint16Array(first.length);
   for (let index = 0; index < first.length; index += 1) {
     child[index] = random() < 0.5 ? first[index] : second[index];
   }
@@ -101,9 +82,15 @@ function crossover(first, second, random) {
 }
 
 function mutate(genome, mutationRate, random) {
-  const child = new Uint8Array(genome);
+  const child = cloneGenome(genome);
   for (let index = 0; index < child.length; index += 1) {
-    if (random() < mutationRate) child[index] = child[index] ? 0 : 1;
+    if (random() >= mutationRate) continue;
+    const direction = random() < 0.5 ? -1 : 1;
+    const delta = randomInt(random, 3_000, 12_000) * direction;
+    const mutated = Math.max(0, Math.min(GENE_MAX, child[index] + delta));
+    child[index] = mutated === child[index]
+      ? Math.max(0, Math.min(GENE_MAX, child[index] - delta))
+      : mutated;
   }
   return child;
 }
@@ -144,7 +131,7 @@ export function createNextGeneration(evaluations, topology, options = {}) {
     const parentA = tournamentWinner(rankedByIndex, random, tournamentSize);
     const parentB = tournamentWinner(rankedByIndex, random, tournamentSize, parentA.index);
     const child = crossover(parentA.genome, parentB.genome, random);
-    next.push(normalizeGenome(mutate(child, mutationRate, random), topology, random));
+    next.push(normalizeGenome(mutate(child, mutationRate, random), topology));
   }
   return next;
 }
@@ -159,7 +146,7 @@ export function evolveOneGeneration(population, topology, options = {}) {
 }
 
 export function countSticks(genome, topology) {
-  return decodeGenome(genome, topology).length;
+  return decodeGenome(genome, topology).members.length;
 }
 
 export function selectBest(evaluations) {

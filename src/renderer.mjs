@@ -1,3 +1,4 @@
+import { decodeGenome } from './bridge.mjs';
 import { DEFAULT_MATERIAL } from './truss.mjs';
 
 function canvasContext(canvas) {
@@ -16,13 +17,13 @@ function canvasContext(canvas) {
   return { context, width, height };
 }
 
-function bridgeLayout(width, height, topology) {
-  const maxY = Math.max(1, ...topology.nodes.map(node => node.y));
+function bridgeLayout(width, height, topology, nodes) {
+  const maxY = Math.max(0.1, ...nodes.map(node => node.y));
   const scale = Math.min((width * 0.84) / topology.span, (height * 0.42) / maxY);
   const spanWidth = topology.span * scale;
   const left = (width - spanWidth) / 2;
   const deckY = height * 0.66;
-  const points = topology.nodes.map(node => ({
+  const points = nodes.map(node => ({
     x: left + node.x * scale,
     y: deckY - node.y * scale,
   }));
@@ -64,7 +65,7 @@ function memberUtilization(member, force, material) {
   return Math.abs(force.forceN) / capacity;
 }
 
-function drawMember(ctx, edge, points, force, broken, material, scale) {
+function drawMember(ctx, edge, points, force, broken, failureCause, material, scale) {
   const a = points[edge.a];
   const b = points[edge.b];
   const dx = b.x - a.x;
@@ -79,7 +80,7 @@ function drawMember(ctx, edge, points, force, broken, material, scale) {
     const gap = Math.max(6, scale * 0.12);
     const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const halfGap = gap / 2;
-    ctx.strokeStyle = 'rgba(239, 118, 104, .78)';
+    ctx.strokeStyle = failureCause === 'glue' ? 'rgba(211, 143, 226, .86)' : 'rgba(239, 118, 104, .78)';
     ctx.lineWidth = width + 0.6;
     ctx.setLineDash([4, 3]);
     ctx.beginPath();
@@ -89,7 +90,7 @@ function drawMember(ctx, edge, points, force, broken, material, scale) {
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = '#ef7668';
+    ctx.fillStyle = failureCause === 'glue' ? '#d38ee5' : '#ef7668';
     ctx.beginPath(); ctx.arc(midpoint.x, midpoint.y, 2.8, 0, Math.PI * 2); ctx.fill();
     return;
   }
@@ -145,17 +146,19 @@ export function drawBridge(canvas, topology, genome, frame = {}, options = {}) {
   const { context: ctx, width, height } = canvasContext(canvas);
   ctx.clearRect(0, 0, width, height);
   drawGrid(ctx, width, height);
-  const layout = bridgeLayout(width, height, topology);
+  const geometry = decodeGenome(genome, topology);
+  const nodes = options.nodes ?? geometry.nodes;
+  const selectedEdges = options.members ?? geometry.members;
+  const layout = bridgeLayout(width, height, topology, nodes);
   drawBanks(ctx, layout, height);
-
-  const selectedEdges = options.members ?? topology.deckEdges.concat(
-    topology.optionalEdges.filter((_, index) => genome[index]),
-  );
   const forces = new Map((frame.memberForces ?? []).map(force => [force.id, force]));
   const broken = frame.brokenMemberIds ?? new Set();
+  const failedJointNodes = frame.failedJointNodes ?? new Set();
+  const failureCauseByMember = frame.failureCauseByMember ?? new Map();
   const material = { ...DEFAULT_MATERIAL, ...options.material };
   for (const edge of selectedEdges) {
-    drawMember(ctx, edge, layout.points, forces.get(edge.id), broken.has(edge.id), material, layout.scale);
+    drawMember(ctx, edge, layout.points, forces.get(edge.id), broken.has(edge.id),
+      failureCauseByMember.get(edge.id), material, layout.scale);
   }
 
   // Joints and supports.
@@ -164,7 +167,7 @@ export function drawBridge(canvas, topology, genome, frame = {}, options = {}) {
   for (const edge of selectedEdges) {
     for (const index of [edge.a, edge.b]) {
       const point = layout.points[index];
-      ctx.fillStyle = broken.has(edge.id) ? '#ef7668' : '#f1d09d';
+      ctx.fillStyle = failedJointNodes.has(index) ? '#d38ee5' : broken.has(edge.id) ? '#ef7668' : '#f1d09d';
       ctx.beginPath(); ctx.arc(point.x, point.y, Math.max(2.6, layout.scale * 0.055), 0, Math.PI * 2); ctx.fill();
     }
   }

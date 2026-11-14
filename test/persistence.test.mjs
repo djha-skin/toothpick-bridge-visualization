@@ -28,7 +28,7 @@ test('saved runs round-trip genomes, paused progress, history, and settings loca
   const storage = memoryStorage();
   const topology = createTopology();
   const run = makeRun(topology);
-  saveRun(storage, run, { speed: 4, mutationPercent: 15 }, topology);
+  saveRun(storage, run, { speed: 4, mutationPercent: 15, glueStrengthPercent: 122 }, topology);
 
   assert.equal(hasSavedRun(storage), true);
   const restored = loadRun(storage, topology);
@@ -41,7 +41,7 @@ test('saved runs round-trip genomes, paused progress, history, and settings loca
   assert.equal(restored.progress, run.progress);
   assert.equal(restored.phase, 'paused');
   assert.deepEqual(restored.history, run.history);
-  assert.deepEqual(restored.settings, { speed: 4, mutationPercent: 15 });
+  assert.deepEqual(restored.settings, { speed: 4, mutationPercent: 15, glueStrengthPercent: 122 });
 
   deleteSavedRun(storage);
   assert.equal(hasSavedRun(storage), false);
@@ -63,8 +63,16 @@ test('saved-run loader rejects damaged, incompatible, and malformed snapshots', 
   const run = makeRun(topology);
   saveRun(storage, run, { speed: 2, mutationPercent: 8 }, topology);
   const snapshot = JSON.parse(storage.getItem(RUN_STORAGE_KEY));
-  snapshot.population[0][0] = 7;
+  snapshot.population[0][0] = 65_536;
   assert.throws(() => validateRunSnapshot(snapshot, topology), /invalid genome/i);
+
+  const invalidGlue = JSON.parse(storage.getItem(RUN_STORAGE_KEY));
+  invalidGlue.settings.glueStrengthPercent = 200;
+  assert.throws(() => validateRunSnapshot(invalidGlue, topology), /invalid evolution settings/i);
+
+  snapshot.schemaVersion = 1;
+  snapshot.modelVersion = 'triangular-truss-v1';
+  assert.throws(() => validateRunSnapshot(snapshot, topology), /incompatible/i);
 });
 
 test('restoring a completed generation returns it ready to inspect/evolve', () => {

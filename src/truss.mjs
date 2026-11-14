@@ -1,10 +1,11 @@
-import { decodeGenome, validateBridge } from './bridge.mjs';
+import { validateBridge } from './bridge.mjs';
 
 // Illustrative tuning values, not measured toothpick or glue properties.
 export const DEFAULT_MATERIAL = Object.freeze({
   axialRigidity: 1,
   tensileStrengthN: 120,
   compressiveStrengthN: 28,
+  glueStrengthRatio: 0.44,
   referenceLength: 1,
   gravity: 9.81,
 });
@@ -183,6 +184,9 @@ function kgEquivalent(forceN, gravity) {
  */
 export function evaluateBridge(genome, topology, options = {}) {
   const material = { ...DEFAULT_MATERIAL, ...options.material };
+  if (!Number.isFinite(material.glueStrengthRatio) || material.glueStrengthRatio < 0) {
+    throw new RangeError('Glue strength ratio must be a finite non-negative number');
+  }
   const validation = validateBridge(genome, topology);
   if (!validation.valid) {
     return {
@@ -202,6 +206,7 @@ export function evaluateBridge(genome, topology, options = {}) {
     { node: topology.supports.left.node, x: true, y: true },
     { node: topology.supports.right.node, x: false, y: true },
   ];
+  const nodes = validation.nodes;
   const allMembers = validation.members;
   let activeMembers = allMembers.slice();
   let currentLoadN = 0;
@@ -210,7 +215,7 @@ export function evaluateBridge(genome, topology, options = {}) {
 
   for (let breakIndex = 0; breakIndex <= allMembers.length; breakIndex += 1) {
     const solution = solveTruss({
-      nodes: topology.nodes,
+      nodes,
       members: activeMembers,
       supports: supportSpecs,
       loads: [{ node: loadNode, x: 0, y: -1 }],
@@ -231,12 +236,22 @@ export function evaluateBridge(genome, topology, options = {}) {
     }
 
     const byId = new Map(solution.memberForces.map(item => [item.id, item.force]));
-    const thresholds = activeMembers.map(member => {
+    const thresholds = activeMembers.flatMap(member => {
       const unitForce = byId.get(member.id) ?? 0;
-      const capacities = capacitiesFor(member, material, topology.nodes);
-      const capacity = unitForce >= 0 ? capacities.tension : capacities.compression;
-      const threshold = Math.abs(unitForce) > 1e-12 ? capacity / Math.abs(unitForce) : Number.POSITIVE_INFINITY;
-      return { member, unitForce, threshold };
+      const capacities = capacitiesFor(member, material, nodes);
+      const woodCapacity = unitForce >= 0 ? capacities.tension : capacities.compression;
+      const forceMagnitude = Math.abs(unitForce);
+      const woodThreshold = forceMagnitude > 1e-12 ? woodCapacity / forceMagnitude : Number.POSITIVE_INFINITY;
+      const candidates = [{ member, unitForce, threshold: woodThreshold, cause: 'wood', endpointNode: null }];
+      if (unitForce > 1e-12) {
+        const glueThreshold = forceMagnitude > 1e-12
+          ? material.tensileStrengthN * material.glueStrengthRatio / forceMagnitude
+          : Number.POSITIVE_INFINITY;
+        for (const endpointNode of [member.a, member.b]) {
+          candidates.push({ member, unitForce, threshold: glueThreshold, cause: 'glue', endpointNode });
+        }
+      }
+      return candidates;
     });
     const nextThreshold = Math.min(...thresholds.map(item => item.threshold));
     if (!Number.isFinite(nextThreshold)) {
@@ -255,7 +270,10 @@ export function evaluateBridge(genome, topology, options = {}) {
     maxStableLoadN = currentLoadN;
     const candidates = thresholds
       .filter(item => item.threshold <= currentLoadN + Math.max(FAILURE_LOAD_TOLERANCE, currentLoadN * FAILURE_LOAD_TOLERANCE))
-      .sort((a, b) => a.threshold - b.threshold || allMembers.indexOf(a.member) - allMembers.indexOf(b.member));
+      .sort((a, b) => a.threshold - b.threshold
+        || allMembers.indexOf(a.member) - allMembers.indexOf(b.member)
+        || (a.cause === b.cause ? 0 : a.cause === 'wood' ? -1 : 1)
+        || (a.endpointNode ?? -1) - (b.endpointNode ?? -1));
     if (candidates.length === 0) {
       return {
         valid: true,
@@ -269,11 +287,14 @@ export function evaluateBridge(genome, topology, options = {}) {
     }
 
     const failed = candidates[0];
-    const forceSnapshot = thresholds.map(item => ({
-      id: item.member.id,
-      forceN: item.unitForce * currentLoadN,
-      type: item.unitForce >= 0 ? 'tension' : 'compression',
-    }));
+    const forceSnapshot = activeMembers.map(member => {
+      const unitForce = byId.get(member.id) ?? 0;
+      return {
+        id: member.id,
+        forceN: unitForce * currentLoadN,
+        type: unitForce >= 0 ? 'tension' : 'compression',
+      };
+    });
     const reactionSnapshot = solution.reactions.map(reaction => ({
       node: reaction.node,
       xN: reaction.x * currentLoadN,
@@ -283,6 +304,12 @@ export function evaluateBridge(genome, topology, options = {}) {
       loadN: currentLoadN,
       loadKg: kgEquivalent(currentLoadN, material.gravity),
       brokenMemberIds: [failed.member.id],
+      memberFailures: [{
+        memberId: failed.member.id,
+        cause: failed.cause,
+        endpointNode: failed.endpointNode,
+        endpointId: failed.endpointNode === null ? null : nodes[failed.endpointNode].id,
+      }],
       memberForces: forceSnapshot,
       reactions: reactionSnapshot,
       collapse: false,

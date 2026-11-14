@@ -25,7 +25,7 @@
         <div>
           <p class="eyebrow">GENETIC BRIDGE EXPERIMENT</p>
           <h1 id="page-title">Can your bridge take the weight?</h1>
-          <p class="intro-copy">Each generation builds a new batch of toothpick trusses. The load climbs until the members give way.</p>
+          <p class="intro-copy">Each generation reshapes a new batch of toothpick trusses. The load climbs until a member gives way; every segment uses one toothpick, even when it is shorter.</p>
         </div>
         <div class="generation-badge" aria-label="Current generation">
           <span class="metric-label">GENERATION</span>
@@ -71,10 +71,11 @@
             <div class="canvas-legend" aria-label="Member force legend">
               <span><i class="legend-dot legend-dot--tension"></i>Tension</span>
               <span><i class="legend-dot legend-dot--compression"></i>Compression</span>
-              <span><i class="legend-dot legend-dot--broken"></i>Failed</span>
+              <span><i class="legend-dot legend-dot--broken"></i>Wood failure</span>
+              <span><i class="legend-dot legend-dot--glue"></i>Glue joint</span>
             </div>
           </div>
-          <p class="stage-caption" id="bridge-description">A fixed-span truss will appear here. Select a bridge below to inspect its structure.</p>
+          <p class="stage-caption" id="bridge-description">A fixed-span truss will appear here. Select a bridge below to inspect its structure. Every partial segment still counts as one toothpick.</p>
           <div class="load-progress" aria-hidden="true"><span id="load-progress-fill"></span></div>
           <div class="stage-footer">
             <span id="test-status" role="status">Ready for the first load test</span>
@@ -105,6 +106,10 @@
 
             <label class="control-label" for="mutation-control"><span>Mutation rate</span><output id="mutation-value" for="mutation-control">8%</output></label>
             <input id="mutation-control" type="range" min="1" max="30" value="8" step="1">
+
+            <label class="control-label" for="glue-control"><span>Glue joint strength</span><output id="glue-value" for="glue-control">44% of wood tension (~53 N)</output></label>
+            <input id="glue-control" type="range" min="44" max="144" value="44" step="1">
+            <p class="hint">White-PVA/Elmer’s-style illustration at the low end of a broad 0.4-inch lap-joint range; not product-specific Elmer’s data.</p>
 
             <div class="seed-controls">
               <label class="control-label" for="seed-input"><span>Experiment seed</span></label>
@@ -163,7 +168,8 @@
       <details class="panel about-panel" id="about">
         <summary>How this experiment works</summary>
         <div class="about-copy">
-          <p>Bridges are modeled as simple 2D trusses. The solver estimates forces in each toothpick as a center load increases, breaks overloaded members, and recalculates how the remaining structure carries the load. Stronger designs are selected to produce the next generation.</p>
+          <p>Bridges are modeled as simple 2D trusses across a fixed 8-toothpick span. The genome shifts and raises the ten upper joints, changing triangle proportions while the 39 connected members remain in place. Every member segment counts as one whole toothpick, even when it is shorter than one; the design stays within a 40-toothpick budget. The solver uses each segment’s actual length for force and buckling estimates.</p>
+          <p>The glue control uses a provisional white-PVA/Elmer’s-style setting relative to the modeled wood strength. Its low-end default is adapted from a <a href="http://www.pisymphony.com/toothpick/GLUETEST/gluetest.html">0.4-inch lap-joint test</a> that reports an overall range across five glue products, not an Elmer’s-specific result. The model assumes identical lap area at every member end, axial tension as bond demand, and direct wood bearing in compression; it does not simulate peel, actual glue area, surface preparation, cure, or interacting multi-stick joints.</p>
           <p>This is an educational visualization, not an engineering tool. The displayed kg-equivalent loads use illustrative strength assumptions, not measured toothpick data. Real toothpicks, joints, glue, materials, and three-dimensional bracing behave differently from this simplified model; never use these results to design or certify a real structure.</p>
         </div>
       </details>
