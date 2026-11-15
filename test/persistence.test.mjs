@@ -28,7 +28,7 @@ test('saved runs round-trip genomes, paused progress, history, and settings loca
   const storage = memoryStorage();
   const topology = createTopology();
   const run = makeRun(topology);
-  saveRun(storage, run, { speed: 4, mutationPercent: 15, glueStrengthPercent: 122 }, topology);
+  saveRun(storage, run, { speed: 8, mutationPercent: 15, mutationStrengthPercent: 24, selectionPressure: 6, glueStrengthPercent: 122 }, topology);
 
   assert.equal(hasSavedRun(storage), true);
   const restored = loadRun(storage, topology);
@@ -41,7 +41,13 @@ test('saved runs round-trip genomes, paused progress, history, and settings loca
   assert.equal(restored.progress, run.progress);
   assert.equal(restored.phase, 'paused');
   assert.deepEqual(restored.history, run.history);
-  assert.deepEqual(restored.settings, { speed: 4, mutationPercent: 15, glueStrengthPercent: 122 });
+  assert.deepEqual(restored.settings, {
+    speed: 8,
+    mutationPercent: 15,
+    mutationStrengthPercent: 24,
+    selectionPressure: 6,
+    glueStrengthPercent: 122,
+  });
 
   deleteSavedRun(storage);
   assert.equal(hasSavedRun(storage), false);
@@ -66,9 +72,27 @@ test('saved-run loader rejects damaged, incompatible, and malformed snapshots', 
   snapshot.population[0][0] = 65_536;
   assert.throws(() => validateRunSnapshot(snapshot, topology), /invalid genome/i);
 
+  const legacySettings = JSON.parse(storage.getItem(RUN_STORAGE_KEY));
+  delete legacySettings.settings.mutationStrengthPercent;
+  delete legacySettings.settings.selectionPressure;
+  assert.deepEqual(validateRunSnapshot(legacySettings, topology).settings, {
+    speed: 2,
+    mutationPercent: 8,
+    mutationStrengthPercent: 18,
+    selectionPressure: 3,
+    glueStrengthPercent: 44,
+  });
+
   const invalidGlue = JSON.parse(storage.getItem(RUN_STORAGE_KEY));
   invalidGlue.settings.glueStrengthPercent = 200;
   assert.throws(() => validateRunSnapshot(invalidGlue, topology), /invalid evolution settings/i);
+  const invalidSpeed = JSON.parse(storage.getItem(RUN_STORAGE_KEY));
+  invalidSpeed.settings.speed = 9;
+  assert.throws(() => validateRunSnapshot(invalidSpeed, topology), /invalid evolution settings/i);
+
+  const previousGeometry = JSON.parse(storage.getItem(RUN_STORAGE_KEY));
+  previousGeometry.modelVersion = 'variable-truss-v2';
+  assert.throws(() => validateRunSnapshot(previousGeometry, topology), /incompatible/i);
 
   snapshot.schemaVersion = 1;
   snapshot.modelVersion = 'triangular-truss-v1';

@@ -18,9 +18,11 @@ test('workshop has semantic landmarks and accessible canvas descriptions', () =>
 });
 
 test('inputs have labels and buttons have visible or programmatic names', () => {
-  for (const id of ['speed-control', 'mutation-control', 'glue-control', 'seed-input']) {
+  for (const id of ['speed-control', 'mutation-control', 'mutation-strength-control', 'selection-pressure-control', 'glue-control', 'seed-input']) {
     assert.match(html, new RegExp(`<label[^>]+for="${id}"`));
   }
+  assert.match(html, /id="speed-control"[^>]*max="8"/);
+  assert.match(html, /id="surprise-toggle"[^>]*aria-pressed="false"/);
   const buttons = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];
   for (const [, attributes, contents] of buttons) {
     assert.ok(/aria-label=/.test(attributes) || contents.replace(/<[^>]+>/g, '').trim(), `unnamed button: ${attributes}`);

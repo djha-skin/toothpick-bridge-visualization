@@ -2,6 +2,7 @@ import { createInitialPopulation, createTopology, decodeGenome } from './bridge.
 import {
   createNextGeneration,
   evaluatePopulation,
+  measurePopulationDiversity,
   rankEvaluations,
 } from './genetics.mjs';
 import { loadTestDurationMs, sampleLoadTest } from './playback.mjs';
@@ -21,10 +22,14 @@ const leaderboard = document.querySelector('#leaderboard');
 const seedInput = document.querySelector('#seed-input');
 const speedControl = document.querySelector('#speed-control');
 const mutationControl = document.querySelector('#mutation-control');
+const mutationStrengthControl = document.querySelector('#mutation-strength-control');
+const selectionPressureControl = document.querySelector('#selection-pressure-control');
 const glueControl = document.querySelector('#glue-control');
+const surpriseControl = document.querySelector('#surprise-toggle');
 const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
 let state;
+let surpriseMode = false;
 let animationId = null;
 let generationTimer = null;
 let evaluationWorker = null;
@@ -123,16 +128,18 @@ function evaluatePopulationOffThread(population) {
   ), 0)));
 }
 
-async function prepareGeneration(targetState, phaseAfter = 'ready', autoRun = false) {
+async function prepareGeneration(targetState, phaseAfter = 'ready') {
   render();
   try {
     const evaluations = await evaluatePopulationOffThread(targetState.population);
     if (state !== targetState) return;
     targetState.evaluations = evaluations;
     targetState.phase = phaseAfter;
-    targetState.autoRun = false;
     render();
-    if (autoRun) startAnimation();
+    if (targetState.autoRun) {
+      if (surpriseMode) fastCompleteGeneration();
+      else startAnimation();
+    }
   } catch (error) {
     if (state === targetState) {
       targetState.phase = 'ready';
@@ -144,6 +151,7 @@ async function prepareGeneration(targetState, phaseAfter = 'ready', autoRun = fa
 
 function startNewRun(seed) {
   cancelPendingWork();
+  surpriseMode = false;
   const nextSeed = seed.trim() || 'toothpick-01';
   seedInput.value = nextSeed;
   const population = createInitialPopulation(POPULATION_SIZE, nextSeed, topology);
@@ -205,7 +213,7 @@ function renderStage() {
   const evaluation = selectedEvaluation();
   if (!evaluation) return;
   const frame = visibleFrame(evaluation);
-  drawBridge(bridgeCanvas, topology, evaluation.genome, frame);
+  if (!surpriseMode) drawBridge(bridgeCanvas, topology, evaluation.genome, frame);
   document.querySelector('#candidate-number').textContent = String(state.selectedIndex + 1).padStart(2, '0');
   document.querySelector('#load-value').textContent = frame.currentLoadKg.toFixed(1);
   document.querySelector('#stick-count').textContent = String(evaluation.result.stickCount);
@@ -213,7 +221,7 @@ function renderStage() {
 
   const isTested = state.selectedIndex < state.testedCount;
   let description = `Bridge ${state.selectedIndex + 1} has ${evaluation.result.stickCount} toothpicks.`;
-  if (isTested) description += ` It held ${evaluation.result.maxStableLoadKg.toFixed(1)} kg-equivalent before ${firstFailureDescription(evaluation.result)} failed.`;
+  if (isTested) description += ` It held ${evaluation.result.maxStableLoadKg.toFixed(2)} kg-equivalent before ${firstFailureDescription(evaluation.result)} failed.`;
   else if (state.phase === 'running' && state.selectedIndex === state.activeIndex) description += ' Its center load is rising.';
   else description += ' Its load test is queued.';
   document.querySelector('#bridge-description').textContent = description;
@@ -222,11 +230,12 @@ function renderStage() {
   if (state.phase === 'preparing') status = 'Calculating structural responses…';
   else if (state.phase === 'running') status = `Loading bridge ${state.activeIndex + 1} · ${state.testedCount + 1}/${state.population.length}`;
   else if (state.phase === 'replay') status = `Replaying recorded failure · ${Math.round(frame.progress * 100)}%`;
-  else if (isTested) status = `Failed at ${evaluation.result.maxStableLoadKg.toFixed(1)} kg-equivalent · ${firstFailureDescription(evaluation.result)}`;
+  else if (isTested) status = `Failed at ${evaluation.result.maxStableLoadKg.toFixed(2)} kg-equivalent · ${firstFailureDescription(evaluation.result)}`;
   else if (state.phase === 'generation-complete') status = 'Generation tested · ready to evolve';
   else if (state.phase === 'paused') status = 'Paused · choose a bridge or resume';
   document.querySelector('#test-status').textContent = status;
-  bridgeCanvas.setAttribute('aria-label', `Bridge ${state.selectedIndex + 1}. Applied load ${frame.currentLoadKg.toFixed(1)} kg-equivalent. ${description}`);
+  const drawingNote = surpriseMode ? ' Bridge drawing is paused in Surprise mode.' : '';
+  bridgeCanvas.setAttribute('aria-label', `Bridge ${state.selectedIndex + 1}. Applied load ${frame.currentLoadKg.toFixed(1)} kg-equivalent. ${description}${drawingNote}`);
 }
 
 function render() {
@@ -241,6 +250,11 @@ function render() {
     populationSize: state.population.length,
     runState: stateText,
   });
+  const diversity = measurePopulationDiversity(state.population);
+  document.querySelector('#diversity-note').textContent =
+    `Diversity: ${diversity.uniqueCount}/${state.population.length} unique · ${diversity.meanGeneDistancePercent.toFixed(1)}% gene spread`;
+  surpriseControl.setAttribute('aria-pressed', String(surpriseMode));
+  surpriseControl.textContent = surpriseMode ? 'Surprise! On · Stop' : 'Surprise!';
   document.querySelector('#best-load-caption').textContent = completedCount
     ? `Generation ${state.generation} · best result so far`
     : 'Waiting for first test';
@@ -269,9 +283,9 @@ function render() {
   runButton.setAttribute('aria-pressed', String(running || (state.phase === 'generation-complete' && state.autoRun)));
   document.querySelector('#status-light').classList.toggle('is-running', running || state.phase === 'replay');
   document.querySelector('#status-light').classList.toggle('is-preparing', preparing);
-  document.querySelector('#step-button').disabled = preparing || state.phase === 'replay';
-  document.querySelector('#replay-test').disabled = preparing || state.selectedIndex >= state.testedCount || state.phase === 'running';
-  document.querySelector('#fast-forward').disabled = preparing || state.phase === 'generation-complete';
+  document.querySelector('#step-button').disabled = preparing || state.phase === 'replay' || surpriseMode;
+  document.querySelector('#replay-test').disabled = preparing || state.selectedIndex >= state.testedCount || state.phase === 'running' || surpriseMode;
+  document.querySelector('#fast-forward').disabled = preparing || state.phase === 'generation-complete' || surpriseMode;
   document.querySelector('#save-run').disabled = preparing;
   if (preparing) {
     document.querySelector('#restore-run').disabled = true;
@@ -283,7 +297,7 @@ function drawAnimationFrame() {
   const evaluation = selectedEvaluation();
   if (!evaluation) return;
   const frame = visibleFrame(evaluation);
-  drawBridge(bridgeCanvas, topology, evaluation.genome, frame);
+  if (!surpriseMode) drawBridge(bridgeCanvas, topology, evaluation.genome, frame);
   document.querySelector('#load-value').textContent = frame.currentLoadKg.toFixed(1);
   document.querySelector('#load-progress-fill').style.width = `${Math.round(frame.progress * 100)}%`;
 }
@@ -366,7 +380,7 @@ function finishGeneration() {
     generationTimer = setTimeout(() => {
       generationTimer = null;
       if (state.autoRun && state.phase === 'generation-complete') advanceGenerationAndRun();
-    }, 900);
+    }, surpriseMode ? 24 : 900);
   }
 }
 
@@ -399,18 +413,21 @@ function advanceGenerationAndRun(autoRun = state.autoRun) {
   if (generationTimer !== null) clearTimeout(generationTimer);
   generationTimer = null;
   const mutationRate = Number(mutationControl.value) / 100;
+  const mutationStrength = Number(mutationStrengthControl.value) / 100;
   const population = createNextGeneration(state.evaluations, topology, {
     populationSize: state.population.length,
     eliteCount: ELITE_COUNT,
-    tournamentSize: 3,
+    tournamentSize: Number(selectionPressureControl.value),
     mutationRate,
+    mutationStrength,
     seed: state.seed,
     generation: state.generation,
   });
   const next = makeGeneration(state.seed, state.generation + 1, population);
   next.history = state.history;
+  next.autoRun = autoRun;
   state = next;
-  void prepareGeneration(next, 'ready', autoRun);
+  void prepareGeneration(next, 'ready');
 }
 
 function handleRunToggle() {
@@ -429,9 +446,17 @@ function handleRunToggle() {
       generationTimer = null;
       render();
     } else {
-      state.autoRun = true;
-      advanceGenerationAndRun();
+      if (surpriseMode) {
+        state.autoRun = true;
+        fastCompleteGeneration();
+      } else {
+        state.autoRun = true;
+        advanceGenerationAndRun();
+      }
     }
+  } else if (surpriseMode) {
+    state.autoRun = true;
+    fastCompleteGeneration();
   } else {
     startAnimation();
   }
@@ -460,6 +485,54 @@ function handleFastForward() {
   finishGeneration();
 }
 
+function fastCompleteGeneration() {
+  if (state.phase === 'preparing') {
+    state.autoRun = true;
+    render();
+    return;
+  }
+  if (state.phase === 'generation-complete') {
+    state.autoRun = true;
+    advanceGenerationAndRun(true);
+    return;
+  }
+  if (state.phase === 'replay') {
+    if (animationId !== null) cancelAnimationFrame(animationId);
+    animationId = null;
+    state.phase = state.testedCount >= state.population.length ? 'generation-complete' : 'paused';
+  }
+  cancelAnimationFrame(animationId);
+  animationId = null;
+  state.autoRun = true;
+  state.testedCount = state.population.length;
+  state.activeIndex = -1;
+  state.progress = 1;
+  finishGeneration();
+}
+
+function toggleSurpriseMode() {
+  surpriseMode = !surpriseMode;
+  if (surpriseMode) {
+    if (generationTimer !== null) clearTimeout(generationTimer);
+    generationTimer = null;
+    state.autoRun = true;
+    render();
+    fastCompleteGeneration();
+    return;
+  }
+
+  if (generationTimer !== null) clearTimeout(generationTimer);
+  generationTimer = null;
+  if (animationId !== null) cancelAnimationFrame(animationId);
+  animationId = null;
+  state.autoRun = false;
+  if (state.phase === 'running' || state.phase === 'replay') {
+    state.phase = state.testedCount >= state.population.length ? 'generation-complete' : 'paused';
+    state.lastTimestamp = null;
+  }
+  render();
+}
+
 function handleReplay() {
   if (state.selectedIndex >= state.testedCount) return;
   if (animationId !== null) cancelAnimationFrame(animationId);
@@ -479,6 +552,8 @@ function saveCurrentRun() {
     saveRun(window.localStorage, state, {
       speed: Number(speedControl.value),
       mutationPercent: Number(mutationControl.value),
+      mutationStrengthPercent: Number(mutationStrengthControl.value),
+      selectionPressure: Number(selectionPressureControl.value),
       glueStrengthPercent: Number(glueControl.value),
     }, topology);
     updateRestoreAvailability();
@@ -492,11 +567,16 @@ async function restoreSavedRun() {
   try {
     const restored = loadRun(window.localStorage, topology);
     cancelPendingWork();
+    surpriseMode = false;
     speedControl.value = String(restored.settings.speed);
     mutationControl.value = String(restored.settings.mutationPercent);
+    mutationStrengthControl.value = String(restored.settings.mutationStrengthPercent);
+    selectionPressureControl.value = String(restored.settings.selectionPressure);
     glueControl.value = String(restored.settings.glueStrengthPercent);
     document.querySelector('#speed-value').textContent = `${speedControl.value}×`;
     document.querySelector('#mutation-value').textContent = `${mutationControl.value}%`;
+    document.querySelector('#mutation-strength-value').textContent = `${mutationStrengthControl.value}%`;
+    document.querySelector('#selection-pressure-value').textContent = selectionPressureControl.value;
     updateGlueReadout();
     seedInput.value = restored.seed;
     const restoredPhase = restored.phase;
@@ -515,6 +595,10 @@ async function restoreSavedRun() {
     targetState.phase = restoredPhase;
     render();
     document.querySelector('#test-status').textContent = 'Saved run restored';
+    if (targetState.autoRun && surpriseMode) {
+      if (targetState.phase === 'generation-complete') advanceGenerationAndRun(true);
+      else fastCompleteGeneration();
+    }
   } catch (error) {
     document.querySelector('#test-status').textContent = error.message || 'Could not restore the saved run.';
   }
@@ -541,6 +625,12 @@ function updateRestoreAvailability() {
 
 function selectCandidate(index) {
   if (!Number.isInteger(index) || index < 0 || index >= state.population.length) return;
+  if (surpriseMode) {
+    surpriseMode = false;
+    state.autoRun = false;
+    if (generationTimer !== null) clearTimeout(generationTimer);
+    generationTimer = null;
+  }
   if (state.phase === 'generation-complete' && state.autoRun) {
     state.autoRun = false;
     if (generationTimer !== null) clearTimeout(generationTimer);
@@ -582,6 +672,13 @@ function bindControls() {
   mutationControl.addEventListener('input', () => {
     document.querySelector('#mutation-value').textContent = `${mutationControl.value}%`;
   });
+  mutationStrengthControl.addEventListener('input', () => {
+    document.querySelector('#mutation-strength-value').textContent = `${mutationStrengthControl.value}%`;
+  });
+  selectionPressureControl.addEventListener('input', () => {
+    document.querySelector('#selection-pressure-value').textContent = selectionPressureControl.value;
+  });
+  surpriseControl.addEventListener('click', toggleSurpriseMode);
   glueControl.addEventListener('input', updateGlueReadout);
   glueControl.addEventListener('change', () => startNewRun(seedInput.value));
 }
@@ -594,7 +691,7 @@ export function bootApp() {
   void prepareGeneration(state);
   const resizeObserver = new ResizeObserver(() => {
     const evaluation = selectedEvaluation();
-    if (evaluation) drawBridge(bridgeCanvas, topology, evaluation.genome, visibleFrame(evaluation));
+    if (evaluation && !surpriseMode) drawBridge(bridgeCanvas, topology, evaluation.genome, visibleFrame(evaluation));
     updateGenerationHistory(historyCanvas, historyDescription, state.history);
   });
   resizeObserver.observe(bridgeCanvas);

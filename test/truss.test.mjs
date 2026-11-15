@@ -108,6 +108,24 @@ test('variable-height geometry solves stably with actual unequal member lengths'
   assert.ok(Math.abs(solution.reactions.reduce((sum, item) => sum + item.y, 0) - 1) < 1e-8);
 });
 
+test('raised central ridge cap remains stable with every member below one toothpick', () => {
+  const { topology, geometry } = bridgeFixture();
+  const solution = solveTruss({
+    nodes: geometry.nodes,
+    members: geometry.members,
+    supports: [
+      { node: topology.supports.left.node, x: true, y: true },
+      { node: topology.supports.right.node, x: false, y: true },
+    ],
+    loads: [{ node: topology.loadNode, x: 0, y: -1 }],
+  });
+  const ridgeNodes = geometry.nodes.slice(topology.bays + 1);
+
+  assert.ok(ridgeNodes[4].y > 0.55 && ridgeNodes[5].y > 0.55);
+  assert.ok(geometry.members.every(member => member.length < 1));
+  assert.equal(solution.stable, true);
+});
+
 test('tension capacity failure matches the exact geometry-based threshold', () => {
   const { topology, genome, geometry } = bridgeFixture();
   const material = { ...DEFAULT_MATERIAL, tensileStrengthN: 0.25, compressiveStrengthN: 100, glueStrengthRatio: 1.5 };
@@ -159,7 +177,7 @@ test('a glue-governed member-end failure is identified and triggers a determinis
 
 test('adjusting the glue ratio changes a glue-governed design into a wood-governed design', () => {
   const topology = createTopology();
-  const genome = createInitialPopulation(24, 'toothpick-01', topology)[1];
+  const genome = createInitialPopulation(24, 'toothpick-01', topology)[7];
   const weakGlue = evaluateBridge(genome, topology, { material: { glueStrengthRatio: 0.44 } });
   const strongGlue = evaluateBridge(genome, topology, { material: { glueStrengthRatio: 1.44 } });
 

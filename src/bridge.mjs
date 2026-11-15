@@ -10,6 +10,9 @@ export const MAX_MEMBER_LENGTH = 1;
 export const APEX_OFFSET_LIMIT = 0.04;
 export const MIN_APEX_HEIGHT = 0.18;
 export const MAX_APEX_HEIGHT = 0.55;
+// Reuse the center pair for a raised cap; adding a planar joint would exceed the stick budget.
+export const RIDGE_APEX_HEIGHT_RANGE = Object.freeze({ min: 0.56, max: 0.64 });
+export const RIDGE_APEX_INDEXES = Object.freeze([4, 5]);
 export const GENOME_LENGTH = DEFAULT_BRIDGE_CONFIG.bays * 2;
 const GENE_MAX = 0xffff;
 const CENTER_GENE = 0x8000;
@@ -30,7 +33,10 @@ function makeTopologyNodes(genome, span, bays) {
     const offsetGene = genes[index * 2];
     const heightGene = genes[index * 2 + 1];
     const offset = ((offsetGene / GENE_MAX) * 2 - 1) * APEX_OFFSET_LIMIT;
-    const height = MIN_APEX_HEIGHT + (heightGene / GENE_MAX) * (MAX_APEX_HEIGHT - MIN_APEX_HEIGHT);
+    const isRidgeApex = RIDGE_APEX_INDEXES.includes(index);
+    const minHeight = isRidgeApex ? RIDGE_APEX_HEIGHT_RANGE.min : MIN_APEX_HEIGHT;
+    const maxHeight = isRidgeApex ? RIDGE_APEX_HEIGHT_RANGE.max : MAX_APEX_HEIGHT;
+    const height = minHeight + (heightGene / GENE_MAX) * (maxHeight - minHeight);
     nodes.push(makeNode(`apex-${index}`, 'apex', panelWidth * (index + 0.5) + offset, height, index));
   }
   return nodes;

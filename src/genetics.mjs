@@ -7,6 +7,7 @@ export const DEFAULT_GA_CONFIG = Object.freeze({
   eliteCount: 2,
   tournamentSize: 3,
   mutationRate: 0.08,
+  mutationStrength: 0.18,
 });
 
 const GENE_MAX = 0xffff;
@@ -81,12 +82,14 @@ function crossover(first, second, random) {
   return child;
 }
 
-function mutate(genome, mutationRate, random) {
+function mutate(genome, mutationRate, mutationStrength, random) {
   const child = cloneGenome(genome);
+  const maxDelta = Math.max(1, Math.round(GENE_MAX * mutationStrength));
+  const minDelta = Math.max(1, Math.round(maxDelta * 0.25));
   for (let index = 0; index < child.length; index += 1) {
     if (random() >= mutationRate) continue;
     const direction = random() < 0.5 ? -1 : 1;
-    const delta = randomInt(random, 3_000, 12_000) * direction;
+    const delta = randomInt(random, minDelta, maxDelta) * direction;
     const mutated = Math.max(0, Math.min(GENE_MAX, child[index] + delta));
     child[index] = mutated === child[index]
       ? Math.max(0, Math.min(GENE_MAX, child[index] - delta))
@@ -104,6 +107,7 @@ export function createNextGeneration(evaluations, topology, options = {}) {
   const eliteCount = options.eliteCount ?? DEFAULT_GA_CONFIG.eliteCount;
   const tournamentSize = options.tournamentSize ?? DEFAULT_GA_CONFIG.tournamentSize;
   const mutationRate = options.mutationRate ?? DEFAULT_GA_CONFIG.mutationRate;
+  const mutationStrength = options.mutationStrength ?? DEFAULT_GA_CONFIG.mutationStrength;
   const seed = options.seed ?? 'bridge-lab';
   const generation = options.generation ?? 1;
 
@@ -119,6 +123,9 @@ export function createNextGeneration(evaluations, topology, options = {}) {
   if (!Number.isFinite(mutationRate) || mutationRate < 0 || mutationRate > 1) {
     throw new RangeError('Mutation rate must be between zero and one');
   }
+  if (!Number.isFinite(mutationStrength) || mutationStrength <= 0 || mutationStrength > 1) {
+    throw new RangeError('Mutation strength must be greater than zero and at most one');
+  }
   if (evaluations.length === 0) throw new RangeError('Cannot evolve an empty population');
 
   const ranked = rankEvaluations(evaluations);
@@ -131,9 +138,35 @@ export function createNextGeneration(evaluations, topology, options = {}) {
     const parentA = tournamentWinner(rankedByIndex, random, tournamentSize);
     const parentB = tournamentWinner(rankedByIndex, random, tournamentSize, parentA.index);
     const child = crossover(parentA.genome, parentB.genome, random);
-    next.push(normalizeGenome(mutate(child, mutationRate, random), topology));
+    next.push(normalizeGenome(mutate(child, mutationRate, mutationStrength, random), topology));
   }
   return next;
+}
+
+export function measurePopulationDiversity(population) {
+  if (!population.length) return { uniqueCount: 0, uniquePercent: 0, meanGeneDistancePercent: 0 };
+  const uniqueCount = new Set(population.map(genomeKey)).size;
+  let totalDistance = 0;
+  let pairCount = 0;
+  for (let first = 0; first < population.length; first += 1) {
+    for (let second = first + 1; second < population.length; second += 1) {
+      const left = population[first];
+      const right = population[second];
+      const length = Math.min(left.length, right.length);
+      let distance = 0;
+      for (let gene = 0; gene < length; gene += 1) {
+        distance += Math.abs(left[gene] - right[gene]) / GENE_MAX;
+      }
+      totalDistance += length ? distance / length : 0;
+      pairCount += 1;
+    }
+  }
+  const meanGeneDistance = pairCount ? totalDistance / pairCount : 0;
+  return {
+    uniqueCount,
+    uniquePercent: uniqueCount / population.length * 100,
+    meanGeneDistancePercent: meanGeneDistance * 100,
+  };
 }
 
 export function evolveOneGeneration(population, topology, options = {}) {

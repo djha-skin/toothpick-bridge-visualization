@@ -216,7 +216,7 @@ export function drawHistory(canvas, history = []) {
     const ratio = line / 3;
     const y = margin.top + plotHeight * ratio;
     ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(width - margin.right, y); ctx.stroke();
-    ctx.fillText((maxValue * (1 - ratio)).toFixed(1), margin.left - 5, y + 3);
+    ctx.fillText((maxValue * (1 - ratio)).toFixed(2), margin.left - 5, y + 3);
   }
   ctx.textAlign = 'center';
   ctx.fillText('GENERATION', margin.left + plotWidth / 2, height - 7);

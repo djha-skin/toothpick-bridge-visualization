@@ -4,6 +4,7 @@ import { createInitialPopulation, createTopology, decodeGenome, genomeKey, valid
 import {
   createNextGeneration,
   evaluatePopulation,
+  measurePopulationDiversity,
   rankEvaluations,
 } from '../src/genetics.mjs';
 
@@ -20,6 +21,15 @@ test('fitness ranks valid bridges by carried load and uses stick count as tie-br
   assert.equal(ranked[0].index, 1);
   assert.equal(ranked[1].index, 0);
   assert.equal(ranked[2].index, 2);
+});
+
+test('ranking preserves raw sub-tenth kilogram load differences', () => {
+  const ranked = rankEvaluations([
+    { index: 0, genome: new Uint8Array([0]), result: { valid: true, maxStableLoadN: 13.7, stickCount: 39 } },
+    { index: 1, genome: new Uint8Array([1]), result: { valid: true, maxStableLoadN: 13.8, stickCount: 39 } },
+  ]);
+  assert.equal(ranked[0].index, 1);
+  assert.ok((13.8 - 13.7) / 9.81 < 0.1);
 });
 
 test('generation transitions preserve elites, size, validity, budget, and seed repeatability', () => {
@@ -45,6 +55,50 @@ test('generation transitions preserve elites, size, validity, budget, and seed r
     assert.equal(validateBridge(genome, topology).valid, true);
     assert.ok(validateBridge(genome, topology).stickCount <= topology.maxSticks);
   }
+});
+
+test('population diversity reports unique genotypes and normalized pairwise distance', () => {
+  const same = new Uint16Array([12, 12]);
+  const opposite = new Uint16Array([65_535, 65_535]);
+  assert.deepEqual(measurePopulationDiversity([same, same]), {
+    uniqueCount: 1,
+    uniquePercent: 50,
+    meanGeneDistancePercent: 0,
+  });
+  assert.deepEqual(measurePopulationDiversity([new Uint16Array([0, 0]), opposite]), {
+    uniqueCount: 2,
+    uniquePercent: 100,
+    meanGeneDistancePercent: 100,
+  });
+});
+
+test('mutation strength and selection pressure produce deterministic diversity changes', () => {
+  const topology = createTopology();
+  const run = options => {
+    let population = createInitialPopulation(24, 'diversity-control-seed', topology);
+    const history = [];
+    for (let generation = 1; generation <= 5; generation += 1) {
+      const evaluations = evaluatePopulation(population, topology);
+      history.push(measurePopulationDiversity(population));
+      population = createNextGeneration(evaluations, topology, {
+        populationSize: 24,
+        eliteCount: 2,
+        mutationRate: options.mutationRate,
+        mutationStrength: options.mutationStrength,
+        tournamentSize: options.tournamentSize,
+        seed: 'diversity-control-seed',
+        generation,
+      });
+    }
+    return { population, history };
+  };
+  const lowExploration = { mutationRate: 0.01, mutationStrength: 0.05, tournamentSize: 8 };
+  const highExploration = { mutationRate: 0.3, mutationStrength: 0.3, tournamentSize: 1 };
+  const low = run(lowExploration);
+  const high = run(highExploration);
+  assert.deepEqual(high, run(highExploration));
+  assert.notDeepEqual(high.population, low.population);
+  assert.ok(high.history.at(-1).meanGeneDistancePercent > 0);
 });
 
 test('elitism keeps the best score from declining across generations', () => {

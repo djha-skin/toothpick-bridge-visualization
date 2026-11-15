@@ -5,6 +5,8 @@ import {
   GENOME_LENGTH,
   MAX_APEX_HEIGHT,
   MIN_APEX_HEIGHT,
+  RIDGE_APEX_HEIGHT_RANGE,
+  RIDGE_APEX_INDEXES,
   MAX_MEMBER_LENGTH,
   createInitialPopulation,
   createTopology,
@@ -54,12 +56,20 @@ test('genome evolves apex coordinates and triangle proportions while every side 
     assert.equal(result.valid, true, result.issues.join(', '));
     assert.equal(result.members.length, 39);
     assert.ok(result.members.every(member => member.length > 0 && member.length < MAX_MEMBER_LENGTH));
-    assert.ok(result.nodes.slice(topology.bays + 1).every(node =>
-      Math.abs(node.x - (node.bay + 0.5) * 0.8) <= APEX_OFFSET_LIMIT + 1e-9
-      && node.y >= MIN_APEX_HEIGHT && node.y <= MAX_APEX_HEIGHT));
+    assert.ok(result.nodes.slice(topology.bays + 1).every(node => {
+      const isRidge = RIDGE_APEX_INDEXES.includes(node.bay);
+      const minHeight = isRidge ? RIDGE_APEX_HEIGHT_RANGE.min : MIN_APEX_HEIGHT;
+      const maxHeight = isRidge ? RIDGE_APEX_HEIGHT_RANGE.max : MAX_APEX_HEIGHT;
+      return Math.abs(node.x - (node.bay + 0.5) * 0.8) <= APEX_OFFSET_LIMIT + 1e-9
+        && node.y >= minHeight && node.y <= maxHeight;
+    }));
   }
+  const ridgeNodes = baseline.nodes.slice(topology.bays + 1);
+  const outerHeights = ridgeNodes.filter(node => !RIDGE_APEX_INDEXES.includes(node.bay)).map(node => node.y);
+  assert.ok(ridgeNodes[4].y > Math.max(...outerHeights));
+  assert.ok(ridgeNodes[5].y > Math.max(...outerHeights));
   assert.ok(new Set(baseline.members.map(member => member.length.toFixed(6))).size > 1);
-  assert.ok(Math.max(...worstChord.members.map(member => member.length)) < 0.96);
+  assert.ok(Math.max(...worstChord.members.map(member => member.length)) < 1);
 });
 
 test('seeded initial populations are repeatable, diverse, valid, and within the 40-segment budget', () => {

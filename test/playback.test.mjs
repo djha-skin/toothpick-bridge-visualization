@@ -35,5 +35,7 @@ test('completed playback shows the final collapse and reduced-motion duration', 
   assert.equal(completed.brokenMemberIds.size, 2);
   assert.equal(completed.currentLoadKg, 100 / 9.81);
   assert.equal(loadTestDurationMs(5), 720);
+  assert.equal(loadTestDurationMs(8), 450);
+  assert.equal(loadTestDurationMs(20), 450);
   assert.equal(loadTestDurationMs(2, true), 120);
 });

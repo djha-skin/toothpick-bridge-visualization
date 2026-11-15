@@ -2,7 +2,7 @@ import { DEFAULT_BRIDGE_CONFIG, validateBridge } from './bridge.mjs';
 
 export const RUN_STORAGE_KEY = 'toothpick-bridge-lab:run:v1';
 export const RUN_SCHEMA_VERSION = 2;
-export const RUN_MODEL_VERSION = 'variable-truss-v2';
+export const RUN_MODEL_VERSION = 'variable-truss-v3';
 
 function integerInRange(value, min, max) {
   return Number.isInteger(value) && value >= min && value <= max;
@@ -32,6 +32,8 @@ export function createRunSnapshot(run, settings = {}, topology) {
     settings: {
       speed: Number(settings.speed ?? 2),
       mutationPercent: Number(settings.mutationPercent ?? 8),
+      mutationStrengthPercent: Number(settings.mutationStrengthPercent ?? 18),
+      selectionPressure: Number(settings.selectionPressure ?? 3),
       glueStrengthPercent: Number(settings.glueStrengthPercent ?? 44),
     },
   };
@@ -94,8 +96,12 @@ export function validateRunSnapshot(snapshot, topology) {
     return { generation: point.generation, bestKg: point.bestKg, averageKg: point.averageKg };
   });
   const settings = snapshot.settings;
-  if (!settings || !integerInRange(settings.speed, 1, 5)
+  const mutationStrengthPercent = settings?.mutationStrengthPercent ?? 18;
+  const selectionPressure = settings?.selectionPressure ?? 3;
+  if (!settings || !integerInRange(settings.speed, 1, 8)
     || !integerInRange(settings.mutationPercent, 1, 30)
+    || !integerInRange(mutationStrengthPercent, 5, 30)
+    || !integerInRange(selectionPressure, 1, 8)
     || !integerInRange(settings.glueStrengthPercent, 44, 144)) {
     throw new Error('Saved run has invalid evolution settings.');
   }
@@ -112,6 +118,8 @@ export function validateRunSnapshot(snapshot, topology) {
     settings: {
       speed: settings.speed,
       mutationPercent: settings.mutationPercent,
+      mutationStrengthPercent,
+      selectionPressure,
       glueStrengthPercent: settings.glueStrengthPercent,
     },
     phase: activeIndex < 0 ? 'generation-complete'

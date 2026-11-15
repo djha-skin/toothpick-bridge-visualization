@@ -2,8 +2,8 @@ import { decodeGenome } from './bridge.mjs';
 import { drawHistory } from './renderer.mjs';
 import { rankEvaluations } from './genetics.mjs';
 
-function formatLoad(value) {
-  return Number.isFinite(value) ? `${value.toFixed(1)} kg` : '—';
+export function formatLoad(value) {
+  return Number.isFinite(value) ? `${value.toFixed(2)} kg` : '—';
 }
 
 function miniatureSvg(genome, topology) {
@@ -81,7 +81,7 @@ export function renderLeaderboard(container, ranked, limit = 5) {
       button.className = 'leaderboard-entry';
       button.dataset.selectIndex = String(evaluation.index);
       button.setAttribute('aria-label', `Rank ${rank + 1}, bridge ${evaluation.index + 1}, ${formatLoad(evaluation.result.maxStableLoadKg)}. Select bridge.`);
-      button.innerHTML = `<span class="rank-number">${String(rank + 1).padStart(2, '0')}</span><span>Bridge ${String(evaluation.index + 1).padStart(2, '0')}</span><span class="rank-load">${evaluation.result.maxStableLoadKg.toFixed(1)}</span>`;
+      button.innerHTML = `<span class="rank-number">${String(rank + 1).padStart(2, '0')}</span><span>Bridge ${String(evaluation.index + 1).padStart(2, '0')}</span><span class="rank-load">${evaluation.result.maxStableLoadKg.toFixed(2)}</span>`;
       item.append(button);
       fragment.append(item);
     });
@@ -103,8 +103,8 @@ export function updateGenerationHistory(canvas, description, history) {
 
 export function updateSummary({ generation, bestKg, averageKg, testedCount, populationSize, runState }) {
   document.querySelector('#generation-value').textContent = String(generation).padStart(2, '0');
-  document.querySelector('#best-load').textContent = Number.isFinite(bestKg) ? bestKg.toFixed(1) : '—';
-  document.querySelector('#average-load').textContent = Number.isFinite(averageKg) ? averageKg.toFixed(1) : '—';
+  document.querySelector('#best-load').textContent = Number.isFinite(bestKg) ? bestKg.toFixed(2) : '—';
+  document.querySelector('#average-load').textContent = Number.isFinite(averageKg) ? averageKg.toFixed(2) : '—';
   document.querySelector('#tested-count').textContent = String(testedCount);
   document.querySelector('#population-count').textContent = `/ ${populationSize}`;
   document.querySelector('#run-state').textContent = runState;

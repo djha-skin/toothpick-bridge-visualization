@@ -100,12 +100,23 @@
               <button class="button button--quiet" id="step-button" type="button" aria-label="Test the next bridge">Step</button>
             </div>
             <button class="button button--wide button--quiet" id="fast-forward" type="button">Fast-forward generation</button>
+            <button class="button button--wide button--quiet" id="surprise-toggle" type="button" aria-pressed="false">Surprise!</button>
+            <p class="hint">Rapidly evolve across generations with bridge drawing reduced; toggle off to return to the visual test.</p>
 
             <label class="control-label" for="speed-control"><span>Test speed</span><output id="speed-value" for="speed-control">2×</output></label>
-            <input id="speed-control" type="range" min="1" max="5" value="2" step="1">
+            <input id="speed-control" type="range" min="1" max="8" value="2" step="1">
 
             <label class="control-label" for="mutation-control"><span>Mutation rate</span><output id="mutation-value" for="mutation-control">8%</output></label>
             <input id="mutation-control" type="range" min="1" max="30" value="8" step="1">
+            <p class="hint">Chance that each genome value changes.</p>
+
+            <label class="control-label" for="mutation-strength-control"><span>Mutation strength</span><output id="mutation-strength-value" for="mutation-strength-control">18%</output></label>
+            <input id="mutation-strength-control" type="range" min="5" max="30" value="18" step="1">
+            <p class="hint">Maximum step for a changed gene; higher values explore more widely.</p>
+
+            <label class="control-label" for="selection-pressure-control"><span>Selection pressure</span><output id="selection-pressure-value" for="selection-pressure-control">3</output></label>
+            <input id="selection-pressure-control" type="range" min="1" max="8" value="3" step="1">
+            <p class="hint">Tournament size: lower keeps more variety; higher favors top scores.</p>
 
             <label class="control-label" for="glue-control"><span>Glue joint strength</span><output id="glue-value" for="glue-control">44% of wood tension (~53 N)</output></label>
             <input id="glue-control" type="range" min="44" max="144" value="44" step="1">
@@ -150,7 +161,10 @@
             <p class="eyebrow">CURRENT GENERATION</p>
             <h2 id="population-heading">The bridge lineup</h2>
           </div>
-          <span class="population-note" id="population-note">Select a bridge to inspect it</span>
+          <div class="population-notes">
+            <span class="population-note" id="population-note">Select a bridge to inspect it</span>
+            <span class="population-note" id="diversity-note">Genetic diversity: —</span>
+          </div>
         </div>
         <div class="population-content">
           <div class="population-grid" id="population-grid" aria-label="Bridge candidates in the current generation">
@@ -168,7 +182,7 @@
       <details class="panel about-panel" id="about">
         <summary>How this experiment works</summary>
         <div class="about-copy">
-          <p>Bridges are modeled as simple 2D trusses across a fixed 8-toothpick span. The genome shifts and raises the ten upper joints, changing triangle proportions while the 39 connected members remain in place. Every member segment counts as one whole toothpick, even when it is shorter than one; the design stays within a 40-toothpick budget. The solver uses each segment’s actual length for force and buckling estimates.</p>
+          <p>Bridges are modeled as simple 2D trusses across a fixed 8-toothpick span. The genome shifts and raises the ten upper joints, with a higher central ridge pair creating a partial second roof tier. The connected 39-member frame remains within the 40-toothpick budget. Every member segment counts as one whole toothpick, even when it is shorter than one; the design stays within a 40-toothpick budget. The solver uses each segment’s actual length for force and buckling estimates.</p>
           <p>The glue control uses a provisional white-PVA/Elmer’s-style setting relative to the modeled wood strength. Its low-end default is adapted from a <a href="http://www.pisymphony.com/toothpick/GLUETEST/gluetest.html">0.4-inch lap-joint test</a> that reports an overall range across five glue products, not an Elmer’s-specific result. The model assumes identical lap area at every member end, axial tension as bond demand, and direct wood bearing in compression; it does not simulate peel, actual glue area, surface preparation, cure, or interacting multi-stick joints.</p>
           <p>This is an educational visualization, not an engineering tool. The displayed kg-equivalent loads use illustrative strength assumptions, not measured toothpick data. Real toothpicks, joints, glue, materials, and three-dimensional bracing behave differently from this simplified model; never use these results to design or certify a real structure.</p>
         </div>

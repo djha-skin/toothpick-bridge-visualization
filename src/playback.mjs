@@ -42,6 +42,6 @@ export function sampleLoadTest(result, progress, options = {}) {
 
 export function loadTestDurationMs(speed = 2, prefersReducedMotion = false) {
   if (prefersReducedMotion) return 120;
-  const boundedSpeed = Math.max(1, Math.min(5, Number(speed) || 1));
+  const boundedSpeed = Math.max(1, Math.min(8, Number(speed) || 1));
   return 3600 / boundedSpeed;
 }

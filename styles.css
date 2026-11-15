@@ -146,6 +146,7 @@ input[type="range"] { width: 100%; margin: 0; accent-color: var(--wood); cursor:
 .population-panel { margin-top: 14px; padding: 18px; }
 .population-heading { margin-bottom: 14px; }
 .population-heading h2 { font-size: 1.05rem; }
+.population-notes { display: grid; gap: 3px; text-align: right; }
 .population-note { color: var(--muted); font-size: .72rem; }
 .population-content { display: grid; grid-template-columns: minmax(0, 1fr) 185px; gap: 16px; align-items: start; }
 .population-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
