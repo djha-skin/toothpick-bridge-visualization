@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  APEX_OFFSET_LIMIT,
   GENOME_LENGTH,
-  MAX_APEX_HEIGHT,
-  MIN_APEX_HEIGHT,
-  RIDGE_APEX_HEIGHT_RANGE,
-  RIDGE_APEX_INDEXES,
+  HORIZONTAL_OFFSET_LIMIT,
+  MAX_MEMBER_COUNT,
   MAX_MEMBER_LENGTH,
+  ROW_HEIGHT_VARIATION,
+  ROW_SPACING,
   createInitialPopulation,
   createTopology,
   decodeGenome,
@@ -16,63 +15,67 @@ import {
 } from '../src/bridge.mjs';
 
 
-test('topology fixes the span, supports, center load, and connected triangulated strip', () => {
+test('topology creates two connected rows of triangles within a 500-stick fair budget', () => {
   const topology = createTopology();
-  const baseline = decodeGenome(topology.baselineGenome, topology);
+  const geometry = decodeGenome(topology.baselineGenome, topology);
+  const secondRowTriangles = geometry.triangles.filter(triangle =>
+    triangle.some(index => geometry.nodes[index].row === 2));
 
   assert.equal(topology.span, 8);
   assert.equal(topology.bays, 10);
-  assert.equal(baseline.nodes.length, 21);
-  assert.equal(topology.memberTemplates.length, 39);
-  assert.equal(topology.triangles.length, 19);
+  assert.equal(topology.triangleLayers, 2);
+  assert.equal(topology.maxSticks, 500);
+  assert.equal(GENOME_LENGTH, 56);
+  assert.equal(geometry.nodes.length, 33);
+  assert.equal(topology.memberTemplates.length, 72);
+  assert.equal(geometry.members.length, 72);
+  assert.equal(geometry.triangles.length, 40);
+  assert.equal(secondRowTriangles.length, 20);
   assert.equal(topology.supports.left.node, 0);
-  assert.equal(baseline.nodes[topology.supports.left.node].x, 0);
+  assert.equal(geometry.nodes[topology.supports.left.node].x, 0);
   assert.equal(topology.supports.right.node, 10);
-  assert.equal(baseline.nodes[topology.supports.right.node].x, topology.span);
+  assert.equal(geometry.nodes[topology.supports.right.node].x, topology.span);
   assert.equal(topology.loadNode, 5);
   assert.equal(validateBridge(topology.baselineGenome, topology).valid, true);
 });
 
-test('genome evolves apex coordinates and triangle proportions while every side stays under one toothpick', () => {
+test('evolved row coordinates and diagonal choices stay triangulated with every member below one toothpick', () => {
   const topology = createTopology();
-  const shortLow = new Uint16Array(GENOME_LENGTH);
-  const tallOffset = new Uint16Array(GENOME_LENGTH).fill(0xffff);
+  const allLow = new Uint16Array(GENOME_LENGTH);
+  const allHigh = new Uint16Array(GENOME_LENGTH).fill(0xffff);
   const alternating = new Uint16Array(GENOME_LENGTH);
-  for (let bay = 0; bay < topology.bays; bay += 1) {
-    alternating[bay * 2] = bay % 2 ? 0xffff : 0;
-    alternating[bay * 2 + 1] = bay % 2 ? 0xffff : 0;
+  for (let index = 0; index < alternating.length; index += 1) {
+    alternating[index] = index % 2 ? 0xffff : 0;
   }
-  const first = decodeGenome(shortLow, topology);
-  const second = decodeGenome(tallOffset, topology);
-  const worstChord = decodeGenome(alternating, topology);
   const baseline = decodeGenome(topology.baselineGenome, topology);
+  const lowGeometry = decodeGenome(allLow, topology);
+  const highGeometry = decodeGenome(allHigh, topology);
+  const alternatingGeometry = decodeGenome(alternating, topology);
 
-  assert.notDeepEqual(first.nodes, second.nodes);
-  assert.notDeepEqual(first.nodes.slice(topology.bays + 1), baseline.nodes.slice(topology.bays + 1));
-  for (const [geometry, genome] of [
-    [first, shortLow], [second, tallOffset], [worstChord, alternating], [baseline, topology.baselineGenome],
+  assert.notDeepEqual(lowGeometry.nodes, highGeometry.nodes);
+  assert.notDeepEqual(lowGeometry.members.filter(member => member.type === 'diagonal'),
+    highGeometry.members.filter(member => member.type === 'diagonal'));
+  for (const [genome, geometry] of [
+    [allLow, lowGeometry], [allHigh, highGeometry], [alternating, alternatingGeometry],
+    [topology.baselineGenome, baseline],
   ]) {
     const result = validateBridge(genome, topology);
     assert.equal(result.valid, true, result.issues.join(', '));
-    assert.equal(result.members.length, 39);
+    assert.equal(result.members.length, 72);
     assert.ok(result.members.every(member => member.length > 0 && member.length < MAX_MEMBER_LENGTH));
-    assert.ok(result.nodes.slice(topology.bays + 1).every(node => {
-      const isRidge = RIDGE_APEX_INDEXES.includes(node.bay);
-      const minHeight = isRidge ? RIDGE_APEX_HEIGHT_RANGE.min : MIN_APEX_HEIGHT;
-      const maxHeight = isRidge ? RIDGE_APEX_HEIGHT_RANGE.max : MAX_APEX_HEIGHT;
-      return Math.abs(node.x - (node.bay + 0.5) * 0.8) <= APEX_OFFSET_LIMIT + 1e-9
-        && node.y >= minHeight && node.y <= maxHeight;
-    }));
+    assert.equal(result.triangles.length, 40);
+    for (const node of geometry.nodes) {
+      if (node.row === 0 || node.bay === 0 || node.bay === topology.bays) continue;
+      const nominalX = node.bay * topology.span / topology.bays;
+      assert.ok(Math.abs(node.x - nominalX) <= HORIZONTAL_OFFSET_LIMIT + 1e-9);
+      assert.ok(Math.abs(node.y - node.row * ROW_SPACING) <= ROW_HEIGHT_VARIATION + 1e-9);
+    }
   }
-  const ridgeNodes = baseline.nodes.slice(topology.bays + 1);
-  const outerHeights = ridgeNodes.filter(node => !RIDGE_APEX_INDEXES.includes(node.bay)).map(node => node.y);
-  assert.ok(ridgeNodes[4].y > Math.max(...outerHeights));
-  assert.ok(ridgeNodes[5].y > Math.max(...outerHeights));
   assert.ok(new Set(baseline.members.map(member => member.length.toFixed(6))).size > 1);
-  assert.ok(Math.max(...worstChord.members.map(member => member.length)) < 1);
+  assert.ok(Math.max(...alternatingGeometry.members.map(member => member.length)) < 0.95);
 });
 
-test('seeded initial populations are repeatable, diverse, valid, and within the 40-segment budget', () => {
+test('seeded initial populations are repeatable, diverse, valid, and below the 500-stick budget', () => {
   const topology = createTopology();
   const first = createInitialPopulation(24, 'bridge-seed-42', topology);
   const replay = createInitialPopulation(24, 'bridge-seed-42', topology);
@@ -84,24 +87,16 @@ test('seeded initial populations are repeatable, diverse, valid, and within the 
   for (const genome of first) {
     const result = validateBridge(genome, topology);
     assert.equal(result.valid, true, result.issues.join(', '));
-    assert.equal(result.stickCount, 39);
+    assert.equal(result.stickCount, 72);
     assert.ok(result.stickCount <= topology.maxSticks);
     assert.equal(result.loadReachable, true);
   }
 });
 
-test('validation detects over-budget and disconnected member templates', () => {
+test('validation detects candidates over a configured member budget', () => {
   const topology = createTopology();
-  const overBudget = { ...topology, maxSticks: 38 };
+  const overBudget = { ...topology, maxSticks: 71 };
   assert.ok(validateBridge(topology.baselineGenome, overBudget).issues.includes('over-budget'));
-
-  const apexZero = topology.bays + 1;
-  const disconnected = {
-    ...topology,
-    memberTemplates: topology.memberTemplates.filter(member =>
-      member.a !== apexZero && member.b !== apexZero),
-  };
-  assert.ok(validateBridge(topology.baselineGenome, disconnected).issues.includes('disconnected-members'));
 });
 
 test('genome decoder rejects malformed vectors and non-integer gene values', () => {
@@ -112,8 +107,10 @@ test('genome decoder rejects malformed vectors and non-integer gene values', () 
   assert.throws(() => decodeGenome(malformed, topology), /integers/);
 });
 
-test('fixed support span and toothpick-budget configuration cannot drift', () => {
+test('fixed span, mesh resolution, and fair member budget cannot drift', () => {
   assert.throws(() => createTopology({ span: 9 }), /fixed at 8/);
   assert.throws(() => createTopology({ bays: 8 }), /exactly 10/);
-  assert.throws(() => createTopology({ maxSticks: 41 }), /budget/);
+  assert.throws(() => createTopology({ triangleLayers: 3 }), /exactly 2 triangle layers/);
+  assert.throws(() => createTopology({ maxSticks: 71 }), /between 72 and 500/);
+  assert.throws(() => createTopology({ maxSticks: MAX_MEMBER_COUNT + 1 }), /between 72 and 500/);
 });

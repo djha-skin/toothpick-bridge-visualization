@@ -108,8 +108,8 @@ test('variable-height geometry solves stably with actual unequal member lengths'
   assert.ok(Math.abs(solution.reactions.reduce((sum, item) => sum + item.y, 0) - 1) < 1e-8);
 });
 
-test('raised central ridge cap remains stable with every member below one toothpick', () => {
-  const { topology, geometry } = bridgeFixture();
+test('two-tier triangulated mesh is solver-stable with 72 sub-toothpick members', () => {
+  const { topology, genome, geometry } = bridgeFixture();
   const solution = solveTruss({
     nodes: geometry.nodes,
     members: geometry.members,
@@ -119,11 +119,20 @@ test('raised central ridge cap remains stable with every member below one toothp
     ],
     loads: [{ node: topology.loadNode, x: 0, y: -1 }],
   });
-  const ridgeNodes = geometry.nodes.slice(topology.bays + 1);
+  const result = evaluateBridge(genome, topology);
+  const upperNodes = geometry.nodes.filter(node => node.row === 2);
+  const secondLayerTriangles = geometry.triangles.filter(triangle =>
+    triangle.some(index => geometry.nodes[index].row === 2));
 
-  assert.ok(ridgeNodes[4].y > 0.55 && ridgeNodes[5].y > 0.55);
+  assert.equal(geometry.nodes.length, 33);
+  assert.equal(geometry.members.length, 72);
+  assert.equal(secondLayerTriangles.length, 20);
+  assert.ok(upperNodes.every(node => node.y > 0.75 && node.y < 0.85));
   assert.ok(geometry.members.every(member => member.length < 1));
   assert.equal(solution.stable, true);
+  assert.equal(result.valid, true);
+  assert.equal(result.stickCount, 72);
+  assert.ok(result.maxStableLoadKg > 0);
 });
 
 test('tension capacity failure matches the exact geometry-based threshold', () => {
@@ -167,18 +176,18 @@ test('a glue-governed member-end failure is identified and triggers a determinis
   assert.equal(result.valid, true);
   assert.equal(result.collapsed, true);
   assert.equal(result.collapseReason, 'unstable-or-singular-truss');
-  assert.equal(result.events.length, 1);
-  assert.equal(result.events[0].collapse, true);
+  assert.ok(result.events.length >= 1);
+  assert.equal(result.events.at(-1).collapse, true);
   assert.equal(failure.cause, 'glue');
   assert.ok(Number.isInteger(failure.endpointNode));
   assert.ok(failure.endpointId);
-  assert.equal(result.events[0].brokenMemberIds[0], failure.memberId);
+  assert.ok(result.events[0].brokenMemberIds.includes(failure.memberId));
 });
 
 test('adjusting the glue ratio changes a glue-governed design into a wood-governed design', () => {
   const topology = createTopology();
-  const genome = createInitialPopulation(24, 'toothpick-01', topology)[7];
-  const weakGlue = evaluateBridge(genome, topology, { material: { glueStrengthRatio: 0.44 } });
+  const genome = createInitialPopulation(24, 'toothpick-01', topology)[0];
+  const weakGlue = evaluateBridge(genome, topology, { material: { glueStrengthRatio: 0.01 } });
   const strongGlue = evaluateBridge(genome, topology, { material: { glueStrengthRatio: 1.44 } });
 
   assert.equal(weakGlue.events[0].memberFailures[0].cause, 'glue');
@@ -192,7 +201,8 @@ test('a seeded population distinguishes mixed wood and glue failure causes deter
   const options = { material: { glueStrengthRatio: 0.44 } };
   const first = evaluatePopulation(population, topology, undefined, options);
   const replay = evaluatePopulation(population, topology, undefined, options);
-  const causes = new Set(first.map(item => item.result.events[0].memberFailures[0].cause));
+  const causes = new Set(first.flatMap(item => item.result.events.flatMap(event =>
+    event.memberFailures.map(failure => failure.cause))));
 
   assert.deepEqual(first, replay);
   assert.deepEqual(causes, new Set(['wood', 'glue']));

@@ -1,8 +1,8 @@
 import { DEFAULT_BRIDGE_CONFIG, validateBridge } from './bridge.mjs';
 
 export const RUN_STORAGE_KEY = 'toothpick-bridge-lab:run:v1';
-export const RUN_SCHEMA_VERSION = 2;
-export const RUN_MODEL_VERSION = 'variable-truss-v3';
+export const RUN_SCHEMA_VERSION = 3;
+export const RUN_MODEL_VERSION = 'triangulated-grid-v4';
 
 function integerInRange(value, min, max) {
   return Number.isInteger(value) && value >= min && value <= max;
@@ -15,6 +15,7 @@ export function createRunSnapshot(run, settings = {}, topology) {
     topology: {
       span: topology.span,
       bays: topology.bays,
+      triangleLayers: topology.triangleLayers,
       maxSticks: topology.maxSticks,
     },
     seed: String(run.seed),
@@ -49,6 +50,7 @@ export function validateRunSnapshot(snapshot, topology) {
   const expectedTopology = {
     span: topology.span ?? DEFAULT_BRIDGE_CONFIG.span,
     bays: topology.bays ?? DEFAULT_BRIDGE_CONFIG.bays,
+    triangleLayers: topology.triangleLayers ?? DEFAULT_BRIDGE_CONFIG.triangleLayers,
     maxSticks: topology.maxSticks ?? DEFAULT_BRIDGE_CONFIG.maxSticks,
   };
   if (!snapshot.topology || Object.keys(expectedTopology).some(key => snapshot.topology[key] !== expectedTopology[key])) {
